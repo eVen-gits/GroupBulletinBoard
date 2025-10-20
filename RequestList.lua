@@ -173,8 +173,9 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
     GBB.Tool.EnableHyperlink( GBB.FramesEntries[ i ] )
   end
 
-  GBB.FramesEntries[ i ]:SetHeight( 999 )
-  _G[ ItemFrameName .. "_message" ]:SetHeight( 999 )
+  -- Set initial height to a reasonable default instead of 999
+  GBB.FramesEntries[ i ]:SetHeight( 20 )
+  _G[ ItemFrameName .. "_message" ]:SetHeight( 20 )
 
   if GBB.DB.DontTrunicate then
     --_G[ItemFrameName .. "_message"]:SetMaxLines(99)
@@ -299,6 +300,9 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   if not GBB.DB.DontTrunicate and forceHight then
     h = forceHight
   end
+
+  -- Ensure minimum height to prevent overlapping
+  h = math.max(h, 16)
 
   -- Indent entries slightly to the right for visual clarity
   GBB.FramesEntries[ i ]:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
@@ -505,6 +509,8 @@ function GBB.UpdateList()
     if GBB.FramesEntries[i] then
       GBB.FramesEntries[i]:Hide()
       GBB.FramesEntries[i]:ClearAllPoints()
+      -- Reset height to prevent accumulation
+      GBB.FramesEntries[i]:SetHeight(1)
     end
   end
 
@@ -663,6 +669,13 @@ function GBB.UpdateList()
           frame:Hide()
           frame:ClearAllPoints()
           frame:SetParent(nil)
+        end
+      end
+      -- Clean up orphaned item frames
+      for i = 1, 100 do
+        if GBB.FramesEntries[i] and not GBB.FramesEntries[i]:IsVisible() then
+          GBB.FramesEntries[i]:SetHeight(1)
+          GBB.FramesEntries[i]:ClearAllPoints()
         end
       end
     end)
