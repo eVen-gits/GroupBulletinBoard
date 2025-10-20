@@ -54,17 +54,17 @@ GBB.heroicTagsLoc = langSplit( {
 GBB.dungeonTagsLoc = {
   enGB = langSplit( {
     [ "RFC" ]    = "rfc ragefire chasm",
-    [ "DM" ]     = "dm deadmines dead mines",
+    [ "DM" ]     = "dm deadmines dead mines mine",
     [ "WC" ]     = "wc wailing",
     [ "SFK" ]    = "sfk shadowfang",
-    [ "STOCKS" ] = "stk stock stocks stockade stockades",
+    [ "STOCKS" ] = "stk stock stockade stockades",
     [ "BFD" ]    = "bfd blackfathom fathom",
     [ "GNOMER" ] = "gnomer gnomeregan",
     [ "RFK" ]    = "rfk kraul",
     [ "SM2" ]    = "sm scarlet monastery",
     [ "GY" ]     = "gy graveyard",
     [ "LIB" ]    = "lib library",
-    [ "ARMS" ]   = "armory armoury arm arms",
+    [ "ARMS" ]   = "armory armoury arms",
     [ "CATH" ]   = "cath cathedral",
     [ "GMM" ]    = "gmm glittermurk glitter murk",
     [ "RFD" ]    = "rfd downs",
@@ -278,6 +278,8 @@ GBB.dungeonTagsLoc = {
     [ "TRADE" ]  = "buy buying sell selling wts wtb hitem henchant htrade enchanter", --hlink
   } ),
 }
+
+GBB.dungeonTagsLoc.enGB[ "DEADMINES" ] = { "dm" }
 
 GBB.dungeonSecondTags = {
   [ "DEADMINES" ] = { "DM", "-DMW", "-DME", "-DMN" },

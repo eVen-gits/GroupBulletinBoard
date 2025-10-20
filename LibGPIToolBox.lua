@@ -144,10 +144,10 @@ end
 
 
 function Tool.EnableHyperlink( frame )
-  -- Unsupported?
-  --frame:SetHyperlinksEnabled(true);
-  --frame:SetScript("OnHyperlinkEnter", EnterHyperlink)
-  --frame:SetScript("OnHyperlinkLeave", LeaveHyperlink)
+  -- Revert to original - hyperlinks were causing positioning issues
+  -- frame:SetHyperlinksEnabled(true);
+  -- frame:SetScript("OnHyperlinkEnter", EnterHyperlink)
+  -- frame:SetScript("OnHyperlinkLeave", LeaveHyperlink)
 end
 
 -- EventHandler
@@ -215,10 +215,17 @@ end
 -- misc tools
 
 function Tool.GuildNameToIndex( name, searchOffline )
+  if not name then return nil end
   name = string.lower( name )
   for i = 1, GetNumGuildMembers( searchOffline ) do
-    if string.lower( string.match( (GetGuildRosterInfo( i )), "(.-)-" ) ) == name then
-      return i
+    local guildInfo = GetGuildRosterInfo( i )
+    if guildInfo then
+      local matchedName = string.match( guildInfo, "(.-)-" )
+      if matchedName then
+        if string.lower( matchedName ) == name then
+          return i
+        end
+      end
     end
   end
 end

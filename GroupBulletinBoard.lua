@@ -114,7 +114,7 @@ function GBB.SplitNoNb( msg )
   --[[
 	local lastTag
 	for it,tag in ipairs(GBB.Tool.Split( string.gsub(msg, "[%p%c%s]", "+") , "+")) do
-		
+
 		if lastTag~=nil then
 			tinsert(add,lastTag.."X"..tag)
 		end
@@ -163,7 +163,22 @@ end
 
 function GBB.FilterDungeon( dungeon, isHeroic, isRaid )
   if dungeon == nil then return false end
-  return GBB.DBChar[ "FilterDungeon" .. dungeon ]
+  if isHeroic == nil then isHeroic = false end
+  if isRaid == nil then isRaid = false end
+
+  -- If the user is within the level range, or if they're max level and it's heroic.
+  local inLevelRange = (not isHeroic and GBB.dungeonLevel[ dungeon ][ 1 ] <= GBB.UserLevel and GBB.UserLevel <= GBB.dungeonLevel[ dungeon ][ 2 ]) or
+      (isHeroic and GBB.UserLevel == 70)
+
+  local filterDungeonResult = (GBB.DBChar["FilterDungeon" .. dungeon] ~= false)
+  local heroicNormalResult = (isRaid or ((GBB.DBChar[ "HeroicOnly" ] == false or isHeroic) and (GBB.DBChar[ "NormalOnly" ] == false or isHeroic == false)))
+  local levelResult = (GBB.DBChar.FilterLevel == false or inLevelRange)
+
+  local finalResult = filterDungeonResult and heroicNormalResult and levelResult
+
+  -- Debug output removed for cleaner chat
+
+  return finalResult
 end
 
 function GBB.formatTime( sec )
@@ -181,19 +196,30 @@ end
 
 function GBB.JoinLFG()
   if GBB.Initalized == true and GBB.LFG_Successfulljoined == false then
+    local joinedChannels = 0
+
+    -- Try to join world channel (General)
     if GBB.L[ "world_channel" ] ~= nil and GBB.L[ "world_channel" ] ~= "" then
       local id, _ = GetChannelName( GBB.L[ "world_channel" ] )
       if id ~= nil and id > 0 then
-        --DEFAULT_CHAT_FRAME:AddMessage("Success join lfg-channel")
-        GBB.LFG_Successfulljoined = true
+        joinedChannels = joinedChannels + 1
       else
-        --DEFAULT_CHAT_FRAME:AddMessage("try join lfg-channel")
         JoinChannelByName( GBB.L[ "world_channel" ] )
       end
-    else
-      -- missing localization
+    end
+
+    -- Try to join LFG channel (LookingForGroup)
+    if GBB.L[ "lfg_channel" ] ~= nil and GBB.L[ "lfg_channel" ] ~= "" then
+      local id, _ = GetChannelName( GBB.L[ "lfg_channel" ] )
+      if id ~= nil and id > 0 then
+        joinedChannels = joinedChannels + 1
+      else
+        JoinChannelByName( GBB.L[ "lfg_channel" ] )
+      end
+    end
+
+    if joinedChannels > 0 then
       GBB.LFG_Successfulljoined = true
-      --DEFAULT_CHAT_FRAME:AddMessage("Channel not definied for "..GetLocale())
     end
   end
 end
@@ -235,7 +261,7 @@ end
 function GBB.ShowWindow()
   GroupBulletinBoardFrame:Show()
   GBB.ClearNeeded = true
-  GBB.UpdateList()
+  if GBB.UpdateList then GBB.UpdateList() end
   GBB.UpdateGroupList()
   GBB.ResizeFrameList()
 end
@@ -441,7 +467,26 @@ function GBB.Init()
     GBB.DB.FontSize = nil
   end
 
-  if not GBB.DBChar.channel then GBB.DBChar.channel = {} end
+  if not GBB.DBChar.channel then
+    GBB.DBChar.channel = {}
+    -- Enable only specific channels for monitoring LFG messages
+    -- Don't enable all channels 1-20 as this interferes with normal chat
+    GBB.DBChar.channel[1] = true  -- General
+    GBB.DBChar.channel[2] = true  -- Trade
+    GBB.DBChar.channel[4] = true  -- LookingForGroup
+  end
+
+  -- Initialize filter settings for all dungeons and raids
+  -- Use the same format as the options menu: "FilterDungeon" .. dungeon
+  if GBB.dungeonSort then
+    for i = 1, 100 do -- Use a reasonable upper limit
+      if GBB.dungeonSort[i] and GBB.DBChar["FilterDungeon" .. GBB.dungeonSort[i]] == nil then
+        GBB.DBChar["FilterDungeon" .. GBB.dungeonSort[i]] = true
+      elseif not GBB.dungeonSort[i] then
+        break -- Stop when we reach the end of the dungeon list
+      end
+    end
+  end
   if not GBB.DB.MinimapButton then GBB.DB.MinimapButton = {} end
   if not GBB.DB.Custom then GBB.DB.Custom = {} end
   if not GBB.DB.CustomLocales then GBB.DB.CustomLocales = {} end
@@ -455,6 +500,15 @@ function GBB.Init()
   GBB.DB.widthTimes = 50
   GBB.DBChar[ "FilterDungeonDEBUG" ] = true -- Fake Option
   GBB.DBChar[ "FilterDungeonBAD" ] = true   -- Fake Option
+
+  -- Initialize filter settings
+  if GBB.DBChar["HeroicOnly"] == nil then GBB.DBChar["HeroicOnly"] = false end
+  if GBB.DBChar["NormalOnly"] == nil then GBB.DBChar["NormalOnly"] = false end
+  if GBB.DBChar["FilterLevel"] == nil then GBB.DBChar["FilterLevel"] = false end
+
+  -- Initialize display settings
+  if GBB.DB.ShowClassIcon == nil then GBB.DB.ShowClassIcon = true end
+  if GBB.DB.ColorByClass == nil then GBB.DB.ColorByClass = true end
 
   --delete outdated
   GBB.DB.showminimapbutton = nil
@@ -472,6 +526,14 @@ function GBB.Init()
   GBB.FramesEntries = {}
 
   GBB.FoldedDungeons = {}
+
+  -- Initialize all dungeons as folded by default
+  -- Only initialize for dungeons that have filter settings
+  for i = 1, GBB.TBCMAXDUNGEON do
+    if GBB.dungeonSort[i] then
+      GBB.FoldedDungeons[GBB.dungeonSort[i]] = true
+    end
+  end
 
   -- Timer-Stuff
   GBB.MAXTIME = time() + 60 * 60 * 24 * 365 --add a year!
@@ -514,6 +576,21 @@ function GBB.Init()
   end
 
   GBB.Tool.SlashCommand( { "/gbb", "/groupbulletinboard" }, {
+    { "debug", "", function()
+      if GBB.DB then
+        GBB.DB.OnDebug = not GBB.DB.OnDebug
+        print("GBB Debug mode: " .. (GBB.DB.OnDebug and "ON" or "OFF"))
+      end
+    end },
+    { "reset", "", function()
+      if GBB.DBChar then
+        GBB.DBChar.channel = {}
+        GBB.DBChar.channel[1] = true  -- General
+        GBB.DBChar.channel[2] = true  -- Trade
+        GBB.DBChar.channel[4] = true  -- LookingForGroup
+        print("GBB: Channel settings reset to default")
+      end
+    end },
     { "notify", "", {
       { "chat", "", {
         { "%", GBB.L[ "CboxNotifyChat" ], doDBSet, GBB.DB, "NotifyChat" }
@@ -598,6 +675,17 @@ function GBB.Init()
   --GroupBulletinBoardFrameTitle:SetText( string.format( GBB.TxtEscapePicture, GBB.MiniIcon ) .. " " .. GBB.Title )
 
   GBB.Initalized = true
+
+  -- Debug output for initialization
+  if GBB.DB.OnDebug then
+    print("GBB Debug: Addon initialized successfully")
+    print("GBB Debug: Channels being monitored:")
+    for i = 1, 20 do
+      if GBB.DBChar.channel[i] then
+        print("GBB Debug: Channel " .. i .. " is enabled")
+      end
+    end
+  end
 
   GBB.PopupDynamic = GBB.Tool.CreatePopup( GBB.OptionsUpdate )
 
@@ -718,9 +806,50 @@ end
 
 local function Event_CHAT_MSG_CHANNEL( msg, name, _3, _4, _5, _6, _7, channelID, channel, _10, _11 )
   if not GBB.Initalized then return end
-  --print("channel:"..tostring(channelID))
+
+
   if GBB.DBChar and GBB.DBChar.channel and GBB.DBChar.channel[ channelID ] then
     GBB.ParseMessage( msg, name, channel )
+  end
+end
+
+local function Event_WHO_LIST_UPDATE()
+  if not GBB.Initalized then return end
+
+  -- Update class and level information for requests
+  local updated = false
+  for i, req in ipairs(GBB.RequestList) do
+    if req and req.name then
+      -- Get who list results
+      local numWhos = GetNumWhoResults()
+
+      for j = 1, numWhos do
+        local name, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+
+        if name == req.name then
+          -- Only update if we don't already have this information or if it's different
+          local shouldUpdate = false
+          if not req.class or req.class ~= classFileName then
+            req.class = classFileName
+            shouldUpdate = true
+          end
+          if level and level > 0 and (not GBB.RealLevel[req.name] or GBB.RealLevel[req.name] ~= level) then
+            GBB.RealLevel[req.name] = level
+            shouldUpdate = true
+          end
+
+          if shouldUpdate then
+            updated = true
+          end
+          break
+        end
+      end
+    end
+  end
+
+  -- Only update the display if we actually changed something
+  if updated then
+    GBB.UpdateList()
   end
 end
 
@@ -731,6 +860,7 @@ end
 
 local function Event_ADDON_LOADED( arg1 )
   if arg1 == TOCNAME then
+    if not GBB.DB then GBB.DB = {} end
     GBB.Init()
   end
   GBB.Tool.AddDataBrocker(
@@ -756,12 +886,24 @@ function GBB.OnHide()
 end
 
 function GBB.OnLoad()
+  -- Initialize database if not already done
+  if not GBB.DB then
+    GBB.DB = {}
+    GBB.DBChar = {}
+  end
+
   GBB.Tool.RegisterEvent( "ADDON_LOADED", Event_ADDON_LOADED )
   GBB.Tool.RegisterEvent( "PLAYER_ENTERING_WORLD", OnEnterWorld )
   GBB.Tool.RegisterEvent( "CHAT_MSG_SYSTEM", Event_CHAT_MSG_SYSTEM )
   GBB.Tool.RegisterEvent( "CHAT_MSG_CHANNEL", Event_CHAT_MSG_CHANNEL )
   GBB.Tool.RegisterEvent( "CHAT_MSG_GUILD", Event_GuildMessage )
   GBB.Tool.RegisterEvent( "CHAT_MSG_OFFICER", Event_GuildMessage )
+  GBB.Tool.RegisterEvent( "WHO_LIST_UPDATE", Event_WHO_LIST_UPDATE )
+
+  if GBB.DB and GBB.DB.OnDebug then
+    print("GBB: WHO_LIST_UPDATE event registered")
+    print("GBB Debug: Events registered - CHAT_MSG_CHANNEL, CHAT_MSG_GUILD, CHAT_MSG_OFFICER")
+  end
 
   for _, event in ipairs( PartyChangeEvent ) do
     GBB.Tool.RegisterEvent( event, GBB.UpdateGroupList )

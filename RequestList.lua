@@ -100,8 +100,9 @@ local function CreateHeader( yy, dungeon )
     colTXT = "|r"
   end
 
-  if LastDungeon ~= "" and not (lastIsFolded and GBB.FoldedDungeons[ dungeon ]) then
-    yy = yy + 10
+  -- Add consistent spacing between dungeon groups
+  if LastDungeon ~= "" then
+    yy = yy + 3
   end
 
   if GBB.FoldedDungeons[ dungeon ] == true then
@@ -122,6 +123,34 @@ local function CreateHeader( yy, dungeon )
   return yy
 end
 
+
+local function CreateSubHeader( yy, subheaderText )
+  local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
+  local SubHeaderFrameName = "GBB.SubHeader_" .. yy .. "_" .. time()
+
+  -- Create a simple subheader frame
+  local subHeaderFrame = CreateFrame( "Frame", SubHeaderFrameName, GroupBulletinBoardFrame_ScrollChildFrame )
+  subHeaderFrame:SetSize( GroupBulletinBoardFrame:GetWidth() - 40, 16 )
+  subHeaderFrame:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
+
+  -- Create text for subheader
+  local subHeaderText = subHeaderFrame:CreateFontString(nil, "OVERLAY")
+  subHeaderText:SetFontObject( "GameFontNormalSmall" )
+  subHeaderText:SetText( "  " .. subheaderText )
+  subHeaderText:SetPoint( "LEFT", subHeaderFrame, "LEFT", 0, 0 )
+  subHeaderText:SetTextColor( 0.8, 0.8, 0.8, 1 )
+
+  subHeaderFrame:Show()
+
+  -- Store reference for cleanup
+  if not GBB.SubHeaders then
+    GBB.SubHeaders = {}
+  end
+  table.insert( GBB.SubHeaders, subHeaderFrame )
+
+  return yy + 16
+end
+
 local function CreateItem( yy, i, doCompact, req, forceHight )
   local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
   local AnchorRight = "GroupBulletinBoardFrame_ScrollChildFrame"
@@ -130,7 +159,6 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   if GBB.FramesEntries[ i ] == nil then
     GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
       "GroupBulletinBoard_TmpRequest" )
-    GBB.FramesEntries[ i ]:SetPoint( "RIGHT", _G[ AnchorRight ], "RIGHT", 0, 0 )
 
     _G[ ItemFrameName .. "_name" ]:SetPoint( "TOPLEFT" )
     _G[ ItemFrameName .. "_time" ]:SetPoint( "TOP", _G[ ItemFrameName .. "_name" ], "TOP", 0, 0 )
@@ -184,18 +212,20 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
       end
     end
 
+    -- Add level display at the end of name
+    local LevelText = ""
+    if GBB.RealLevel[ req.name ] then
+      LevelText = " |cff888888[" .. GBB.RealLevel[ req.name ] .. "]|r"
+    end
+
     local FriendIcon = (req.IsFriend and string.format( GBB.TxtEscapePicture, GBB.FriendIcon ) or "") ..
         (req.IsGuildMember and string.format( GBB.TxtEscapePicture, GBB.GuildIcon ) or "") ..
         (req.IsPastPlayer and string.format( GBB.TxtEscapePicture, GBB.PastPlayerIcon ) or "")
 
     local suffix = "|r"
 
-    if GBB.RealLevel[ req.name ] then
-      suffix = " (" .. GBB.RealLevel[ req.name ] .. ")" .. suffix
-    end
-
-
-
+    -- Level and class info is now handled by icons and name colors
+    -- Removed redundant [level CLASS] display
 
     local ti
     if GBB.DB.ShowTotalTime then
@@ -222,7 +252,7 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
       _G[ ItemFrameName .. "_message" ]:SetText( ClassIcon ..
         "[" .. prefix .. req.name .. suffix .. "]" .. FriendIcon .. ": " .. req.message )
     else
-      _G[ ItemFrameName .. "_name" ]:SetText( ClassIcon .. prefix .. req.name .. suffix .. FriendIcon )
+      _G[ ItemFrameName .. "_name" ]:SetText( ClassIcon .. prefix .. req.name .. LevelText .. suffix .. FriendIcon )
       _G[ ItemFrameName .. "_message" ]:SetText( typePrefix .. suffix .. req.message )
       _G[ ItemFrameName .. "_time" ]:SetText( ti )
     end
@@ -247,17 +277,11 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   else
     _G[ ItemFrameName .. "_time" ]:Show()
     _G[ ItemFrameName .. "_name" ]:Show()
-    local w = _G[ ItemFrameName .. "_name" ]:GetStringWidth() + 10
-    if w > GBB.DB.widthNames then
-      GBB.DB.widthNames = w
-    end
-    _G[ ItemFrameName .. "_name" ]:SetWidth( GBB.DB.widthNames )
-
-    local w = _G[ ItemFrameName .. "_time" ]:GetStringWidth() + 10
-    if w > GBB.DB.widthTimes then
-      GBB.DB.widthTimes = w
-    end
-    _G[ ItemFrameName .. "_time" ]:SetPoint( "LEFT", _G[ AnchorRight ], "RIGHT", -GBB.DB.widthTimes, 0 )
+    -- Use precomputed widths for this render pass to avoid mid-pass reflow
+    local nameWidth = (GBB.DB.widthNames and GBB.DB.widthNames > 0) and GBB.DB.widthNames or (_G[ ItemFrameName .. "_name" ]:GetStringWidth() + 10)
+    local timeWidth = (GBB.DB.widthTimes and GBB.DB.widthTimes > 0) and GBB.DB.widthTimes or (_G[ ItemFrameName .. "_time" ]:GetStringWidth() + 10)
+    _G[ ItemFrameName .. "_name" ]:SetWidth( nameWidth )
+    _G[ ItemFrameName .. "_time" ]:SetPoint( "RIGHT", GBB.FramesEntries[ i ], "RIGHT", -10, 0 )
   end
   local h
   if GBB.DB.ChatStyle then
@@ -276,9 +300,14 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
     h = forceHight
   end
 
+  -- Indent entries slightly to the right for visual clarity
   GBB.FramesEntries[ i ]:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
   _G[ ItemFrameName .. "_message" ]:SetHeight( h + 10 )
   GBB.FramesEntries[ i ]:SetHeight( h )
+
+  -- Ensure the frame has proper width and is visible
+  GBB.FramesEntries[ i ]:SetWidth( GroupBulletinBoardFrame:GetWidth() - 40 )
+  GBB.FramesEntries[ i ]:SetAlpha( 1 )
 
   if req then
     GBB.FramesEntries[ i ]:Show()
@@ -289,11 +318,81 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   return h
 end
 
-local function WhoRequest( name )
-  --DEFAULT_CHAT_FRAME:AddMessage(GBB.MSGPREFIX .. string.format(GBB.L["msgStartWho"],name))
-  --DEFAULT_CHAT_FRAME.editBox:SetText("/who " .. name)
-  --ChatEdit_SendText(DEFAULT_CHAT_FRAME.editBox)
+function GBB.WhoRequest( name )
+  -- Store the name we're looking for
+  GBB.PendingWhoRequest = name
+
   GBB.Tool.RunSlashCmd( "/who " .. name )
+
+  -- Schedule an update after /who to refresh level/class info
+  -- Use a simple approach for Classic/Wrath compatibility
+  GBB.WhoUpdateTimer = time() + 2
+
+  -- Try multiple times to get the who results with better timing
+  local attempts = 0
+  local maxAttempts = 5
+
+  local function checkWhoResults()
+    attempts = attempts + 1
+
+    local numWhos = GetNumWhoResults()
+    local found = false
+
+    for j = 1, numWhos do
+      local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+
+      if whoName == name then
+        -- Update all requests for this player across all dungeons
+        for i, req in ipairs(GBB.RequestList) do
+          if req and req.name == name then
+            req.class = classFileName
+            if level and level > 0 then
+              GBB.RealLevel[req.name] = level
+            end
+            found = true
+          end
+        end
+        GBB.UpdateList()
+        break
+      end
+    end
+
+    -- If we didn't find the player and haven't exceeded max attempts, try again
+    if not found and attempts < maxAttempts then
+      C_Timer.After(0.3, checkWhoResults)
+    end
+  end
+
+  -- Start checking after a short delay
+  C_Timer.After(0.3, checkWhoResults)
+
+  -- Fallback: Force update after 2 seconds even if who didn't work
+  C_Timer.After(2, function()
+    GBB.UpdateList()
+  end)
+
+  -- Additional fallback: Try again after 4 seconds
+  C_Timer.After(4, function()
+    GBB.Tool.RunSlashCmd( "/who " .. name )
+    C_Timer.After(1, function()
+      local numWhos = GetNumWhoResults()
+      for j = 1, numWhos do
+        local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+        if whoName == name then
+          for i, req in ipairs(GBB.RequestList) do
+            if req and req.name == name then
+              req.class = classFileName
+              if level and level > 0 then
+                GBB.RealLevel[req.name] = level
+              end
+            end
+          end
+          GBB.UpdateList()
+          break
+        end
+      end
+    end)
+  end)
 end
 
 local function WhisperRequest( name )
@@ -320,7 +419,7 @@ function GBB.Clear()
     GBB.ClearTimer = GBB.MAXTIME
 
     for i, req in pairs( GBB.RequestList ) do
-      if type( req ) == "table" then
+      if type( req ) == "table" and req.last then
         if req.last + GBB.DB.TimeOut * 3 > time() then
           if req.last < GBB.ClearTimer then
             GBB.ClearTimer = req.last
@@ -340,36 +439,42 @@ function GBB.UpdateList()
   GBB.Clear()
 
   if not GroupBulletinBoardFrame:IsVisible() then
-    return
+    -- Don't return early - we still want to process requests even if frame is not visible
+    -- return
+  end
+
+  -- Check if we need to update after /who command
+  if GBB.WhoUpdateTimer and time() >= GBB.WhoUpdateTimer then
+    GBB.WhoUpdateTimer = nil
+    -- Force a refresh of the display
   end
 
   GBB.UserLevel = UnitLevel( "player" )
 
-  if GBB.DB.OrderNewTop then
-    if GBB.DB.ShowTotalTime then
-      table.sort( GBB.RequestList, requestSort_TOP_TOTAL )
-    else
-      -- BUG: invalid order function for sorting
-      table.sort( GBB.RequestList, requestSort_TOP_nTOTAL )
-    end
-  else
-    if GBB.DB.ShowTotalTime then
-      table.sort( GBB.RequestList, requestSort_nTOP_TOTAL )
-    else
-      table.sort( GBB.RequestList, requestSort_nTOP_nTOTAL )
-    end
-  end
+  -- Disable sorting to prevent list shuffling
+  -- if GBB.DB.OrderNewTop then
+  --   if GBB.DB.ShowTotalTime then
+  --     table.sort( GBB.RequestList, requestSort_TOP_TOTAL )
+  --   else
+  --     -- BUG: invalid order function for sorting
+  --     table.sort( GBB.RequestList, requestSort_TOP_nTOTAL )
+  --   end
+  -- else
+  --   if GBB.DB.ShowTotalTime then
+  --     table.sort( GBB.RequestList, requestSort_nTOP_TOTAL )
+  --   else
+  --     table.sort( GBB.RequestList, requestSort_nTOP_nTOTAL )
+  --   end
+  -- end
 
 
 
 
-  for i, f in pairs( GBB.FramesEntries ) do
-    f:Hide()
-  end
+
 
   local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
   local AnchorRight = "GroupBulletinBoardFrame_ScrollChildFrame"
-  local yy = 0
+  local yy = 10  -- Start with small top margin
   LastDungeon = ""
   local count = 0
   local doCompact = 1
@@ -387,7 +492,7 @@ function GBB.UpdateList()
     local playername = (GBB.api.UnitFullName( "player" ))
 
     for i, req in pairs( GBB.RequestList ) do
-      if type( req ) == "table" and req.name == playername and req.last + GBB.DB.TimeOut * 2 > time() then
+      if type( req ) == "table" and req.name == playername and req.last and req.last + GBB.DB.TimeOut * 2 > time() then
         ownRequestDungeons[ req.dungeon ] = true
       end
     end
@@ -395,71 +500,173 @@ function GBB.UpdateList()
 
   local itemHight = CreateItem( yy, 0, doCompact, nil )
 
-  --GroupBulletinBoardFrame_ScrollFrame.ScrollBar.scrollStep = itemHight * 2
-
-  if #GBB.FramesEntries < 100 then
-    for i = 1, 100 do
-      CreateItem( yy, i, doCompact, nil )
+  -- Hide all frames first and reset their positions
+  for i = 1, 100 do
+    if GBB.FramesEntries[i] then
+      GBB.FramesEntries[i]:Hide()
+      GBB.FramesEntries[i]:ClearAllPoints()
     end
   end
 
+  -- Hide all subheaders and clear their points
+  if GBB.SubHeaders then
+    for _, subHeader in ipairs( GBB.SubHeaders ) do
+      if subHeader then
+        subHeader:Hide()
+        subHeader:ClearAllPoints()
+        subHeader:SetParent(nil)
+      end
+    end
+    GBB.SubHeaders = {}
+  end
+
+  -- Also clean up any orphaned subheaders by searching for them
+  for i = 1, 1000 do
+    local frame = _G["GBB.SubHeader_" .. i]
+    if frame then
+      frame:Hide()
+      frame:ClearAllPoints()
+      frame:SetParent(nil)
+    end
+  end
+
+  -- First, collect all valid requests organized by dungeon and LFG/LFM type
+  local dungeonRequests = {}
   for i, req in pairs( GBB.RequestList ) do
     if type( req ) == "table" then
-      if (ownRequestDungeons[ req.dungeon ] == true or GBB.FilterDungeon( req.dungeon, req.IsHeroic, req.IsRaid )) and req.last + GBB.DB.TimeOut > time() then
+      -- Skip Miscellaneous category entirely
+      if req.dungeon == "MISC" then
+        -- do not render or count
+      elseif req.dungeon ~= "TRADE" and (ownRequestDungeons[ req.dungeon ] == true or GBB.FilterDungeon( req.dungeon, req.IsHeroic, req.IsRaid )) and req.last and req.last + GBB.DB.TimeOut > time() then
         count = count + 1
 
-        --header
-        if LastDungeon ~= req.dungeon then
-          local hi
-          if GBB.DB.EnableShowOnly then
-            hi = GBB.dungeonSort[ LastDungeon ] or 0
+        -- Detect LFG vs LFM based on message content
+        local isLFG = false
+        local isLFM = false
+        if req.message then
+          local msg = string.lower(req.message)
+          -- Look for LFG indicators (looking for group)
+          if string.find(msg, "lfg") or string.find(msg, "looking for group") or string.find(msg, "need group") then
+            isLFG = true
+          -- Look for LFM indicators (looking for members)
+          elseif string.find(msg, "lfm") or string.find(msg, "looking for members") or string.find(msg, "need members") or string.find(msg, "need dps") or string.find(msg, "need healer") or string.find(msg, "need tank") then
+            isLFM = true
           else
-            hi = GBB.dungeonSort[ req.dungeon ] - 1
+            -- Default to LFG if no clear indicator
+            isLFG = true
           end
-          while hi < GBB.dungeonSort[ req.dungeon ] do
-            if LastDungeon ~= "" and GBB.FoldedDungeons[ GBB.dungeonSort[ hi ] ] ~= true and GBB.DB.EnableShowOnly then
-              yy = yy + itemHight * (GBB.DB.ShowOnlyNb - cEntrys)
-            end
-            hi = hi + 1
-
-            if (ownRequestDungeons[ GBB.dungeonSort[ hi ] ] == true or GBB.FilterDungeon( GBB.dungeonSort[ hi ], req.IsHeroic, req.IsRaid )) then
-              yy = CreateHeader( yy, GBB.dungeonSort[ hi ] )
-              cEntrys = 0
-            else
-              cEntrys = GBB.DB.ShowOnlyNb
-            end
-          end
+        else
+          isLFG = true
         end
 
-        --entry
-        if GBB.FoldedDungeons[ req.dungeon ] ~= true and (not GBB.DB.EnableShowOnly or cEntrys < GBB.DB.ShowOnlyNb) then
-          yy = yy + CreateItem( yy, i, doCompact, req, itemHight ) + 3
-          cEntrys = cEntrys + 1
+        if not dungeonRequests[ req.dungeon ] then
+          dungeonRequests[ req.dungeon ] = { lfg = {}, lfm = {} }
+        end
+
+        local requestData = { req = req, index = i, isLFG = isLFG, isLFM = isLFM }
+        if isLFG then
+          table.insert( dungeonRequests[ req.dungeon ].lfg, requestData )
+        else
+          table.insert( dungeonRequests[ req.dungeon ].lfm, requestData )
         end
       end
     end
   end
 
-  if GBB.DB.EnableShowOnly then
-    local hi = GBB.dungeonSort[ LastDungeon ] or 0
-    while hi < GBB.TBCMAXDUNGEON do
-      if LastDungeon ~= "" and GBB.FoldedDungeons[ LastDungeon ] ~= true and GBB.DB.EnableShowOnly then
-        yy = yy + itemHight * (GBB.DB.ShowOnlyNb - cEntrys)
-      end
-      hi = hi + 1
-      if (ownRequestDungeons[ GBB.dungeonSort[ hi ] ] == true or GBB.FilterDungeon( GBB.dungeonSort[ hi ], false, false )) then
-        yy = CreateHeader( yy, GBB.dungeonSort[ hi ] )
+  -- Now process each dungeon in order
+  for dungeonIndex = 1, GBB.TBCMAXDUNGEON do
+    local dungeon = GBB.dungeonSort[ dungeonIndex ]
+    if dungeon and dungeonRequests[ dungeon ] then
+      local dungeonData = dungeonRequests[ dungeon ]
+      local hasLFG = #dungeonData.lfg > 0
+      local hasLFM = #dungeonData.lfm > 0
+
+      -- Only show dungeon if it has requests
+      if hasLFG or hasLFM then
+        -- Create header for this dungeon
+        yy = CreateHeader( yy, dungeon )
         cEntrys = 0
-      else
-        cEntrys = GBB.DB.ShowOnlyNb
+
+        local isFolded = GBB.FoldedDungeons[ dungeon ] == true
+
+        if not isFolded then
+          -- Process LFG entries first
+          if hasLFG then
+            -- Render LFG entries directly (no subheader for compact view)
+            for _, entryData in ipairs( dungeonData.lfg ) do
+              local req = entryData.req
+              local i = entryData.index
+
+              if not GBB.DB.EnableShowOnly or cEntrys < GBB.DB.ShowOnlyNb then
+                local itemHeight = CreateItem( yy, i, doCompact, req, itemHight )
+                yy = yy + itemHeight + 3
+                cEntrys = cEntrys + 1
+              else
+                if GBB.FramesEntries[i] then
+                  GBB.FramesEntries[i]:Hide()
+                end
+              end
+            end
+          end
+
+          -- Process LFM entries (no subheader for compact view)
+          if hasLFM then
+            for _, entryData in ipairs( dungeonData.lfm ) do
+              local req = entryData.req
+              local i = entryData.index
+
+              if not GBB.DB.EnableShowOnly or cEntrys < GBB.DB.ShowOnlyNb then
+                local itemHeight = CreateItem( yy, i, doCompact, req, itemHight )
+                yy = yy + itemHeight + 3
+                cEntrys = cEntrys + 1
+              else
+                if GBB.FramesEntries[i] then
+                  GBB.FramesEntries[i]:Hide()
+                end
+              end
+            end
+          end
+        else
+          -- Hide all frames if dungeon is folded
+          for _, entryData in ipairs( dungeonData.lfg ) do
+            if GBB.FramesEntries[entryData.index] then
+              GBB.FramesEntries[entryData.index]:Hide()
+            end
+          end
+          for _, entryData in ipairs( dungeonData.lfm ) do
+            if GBB.FramesEntries[entryData.index] then
+              GBB.FramesEntries[entryData.index]:Hide()
+            end
+          end
+        end
       end
     end
   end
 
-  yy = yy + GroupBulletinBoardFrame_ScrollFrame:GetHeight() - 20
+  -- Simplified spacing logic - no complex calculations needed
 
-  GroupBulletinBoardFrame_ScrollChildFrame:SetHeight( yy )
+  -- Set the scroll child frame height to accommodate all content
+  GroupBulletinBoardFrame_ScrollChildFrame:SetHeight( yy + 20 )
+
+  -- Update the scroll frame to ensure proper scrolling
+  GroupBulletinBoardFrame_ScrollFrame:UpdateScrollChildRect()
+
   GroupBulletinBoardFrameStatusText:SetText( string.format( GBB.L[ "msgNbRequest" ], count ) )
+
+  -- Schedule periodic cleanup to prevent accumulation
+  if not GBB.CleanupTimer then
+    GBB.CleanupTimer = C_Timer.NewTicker(30, function()
+      -- Clean up any orphaned subheaders
+      for i = 1, 1000 do
+        local frame = _G["GBB.SubHeader_" .. i]
+        if frame and not frame:IsVisible() then
+          frame:Hide()
+          frame:ClearAllPoints()
+          frame:SetParent(nil)
+        end
+      end
+    end)
+  end
 end
 
 local nonLfgHyperlinks = {
@@ -473,7 +680,7 @@ local nonLfgHyperlinks = {
 local function hasNonLfgHyperlinks( msg )
   for k, v in pairs( nonLfgHyperlinks ) do
     -- literal string match, not pattern
-    if strfind( msg, k, 1, true ) then 
+    if strfind( msg, k, 1, true ) then
       return true
     end
   end
@@ -535,7 +742,7 @@ function GBB.GetDungeons( msg, name )
         break
       elseif x == GBB.TAGSEARCH then
         isGood = true
-      elseif GBB.dungeonLevel[ x ] then
+      else
         dungeons[ x ] = true
       end
     end
@@ -568,9 +775,9 @@ function GBB.GetDungeons( msg, name )
       dungeons[ "DM2" ] = true
     end
   end
-  
+
   -- Irrelevant hyperlinks in lfg messages invalidate message
-  if not dungeons[ "TRADE" ] and not dungeons [ "MISC" ] 
+  if not dungeons [ "MISC" ]
       and hasNonLfgHyperlinks( msg ) then
     isBad = true
     isGood = false
@@ -604,9 +811,8 @@ function GBB.GetDungeons( msg, name )
     if next( dungeons ) == nil then
       dungeons[ "MISC" ] = true
     end
-  elseif dungeons[ "TRADE" ] then
-    isGood = true
   end
+  -- Remove TRADE handling entirely
 
   -- remove all secondtags-dungeons
   for ip, p in pairs( GBB.dungeonSecondTags ) do
@@ -627,8 +833,10 @@ function GBB.GetDungeons( msg, name )
       end
     end
   end
-  
 
+
+  -- Finally, drop MISC entirely so it never appears or gets created
+  dungeons[ "MISC" ] = nil
   return dungeons, isGood, isBad, wordcount, isHeroic
 end
 
@@ -644,8 +852,12 @@ end
 
 function GBB.ParseMessage( msg, name, channel )
   if GBB.Initalized == false or name == nil or name == "" or msg == nil or msg == "" or string.len( msg ) < 4 then
+    if GBB.DB.OnDebug then
+      print("GBB: ParseMessage rejected - Initalized: " .. tostring(GBB.Initalized) .. ", name: " .. tostring(name) .. ", msg: " .. tostring(msg))
+    end
     return
   end
+
 
   if GBB.DB.FilterNonAsciiMessages and is_non_ascii( msg ) then return end
 
@@ -663,7 +875,7 @@ function GBB.ParseMessage( msg, name, channel )
   local updated = false
 
   for _, req in pairs( GBB.RequestList ) do
-    if type( req ) == "table" and req.name == name and req.last + GBB.COMBINEMSGTIMER >= requestTime then
+    if type( req ) == "table" and req.name == name and req.last and req.last + GBB.COMBINEMSGTIMER >= requestTime then
       if req.dungeon == "TRADE" then
         updated = true
         if msg ~= req.message then
@@ -683,18 +895,28 @@ function GBB.ParseMessage( msg, name, channel )
   --flm RFD need healer and 3 dps
   local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( msg, name )
 
-  if type( dungeonList ) ~= "table" then return end
+
+  if type( dungeonList ) ~= "table" then
+    if GBB.DB and GBB.DB.OnDebug then
+      print("GBB: GetDungeons returned non-table for message: " .. msg)
+    end
+    return
+  end
+
 
   local dungeonTXT = ""
 
-  if GBB.DB.UseAllInLFG and isBad == false and isGood == false and string.lower( GBB.L[ "world_channel" ] ) == string.lower( channel ) then
+  if GBB.DB.UseAllInLFG and isBad == false and isGood == false and
+     (string.lower( GBB.L[ "world_channel" ] ) == string.lower( channel ) or
+      string.lower( GBB.L[ "lfg_channel" ] ) == string.lower( channel )) then
     isGood = true
     if next( dungeonList ) == nil then
-      dungeonList[ "MISC" ] = true
+      -- Previously defaulted to MISC; we now skip creating MISC entirely
     end
   elseif isGood == false or isBad == true then
     dungeonList = {}
   end
+
 
   if wordcount > 1 then
     for dungeon, id in pairs( dungeonList ) do
@@ -722,7 +944,7 @@ function GBB.ParseMessage( msg, name, channel )
           GBB.RequestList[ index ].IsFriend = false      --C_FriendList.IsFriend( guid )
           GBB.RequestList[ index ].IsPastPlayer = GBB.GroupTrans[ name ] ~= nil
 
-          if GBB.FilterDungeon( dungeon, isHeroic, isRaid ) and dungeon ~= "TRADE" and dungeon ~= "MISC" and GBB.FoldedDungeons[ dungeon ] ~= true then
+          if GBB.FilterDungeon( dungeon, isHeroic, isRaid ) and dungeon ~= "TRADE" then
             if dungeonTXT == "" then
               dungeonTXT = GBB.dungeonNames[ dungeon ]
             else
@@ -731,11 +953,16 @@ function GBB.ParseMessage( msg, name, channel )
           end
         end
 
-        GBB.RequestList[ index ].message = msg
-        GBB.RequestList[ index ].IsHeroic = isHeroic
-        GBB.RequestList[ index ].IsRaid = isRaid
-        GBB.RequestList[ index ].last = requestTime
-        doUpdate = true
+        -- Do not store entries as MISC; skip adding them entirely
+        if dungeon == "MISC" then
+          -- Skip
+        else
+          GBB.RequestList[ index ].message = msg
+          GBB.RequestList[ index ].IsHeroic = isHeroic
+          GBB.RequestList[ index ].IsRaid = isRaid
+          GBB.RequestList[ index ].last = requestTime
+          doUpdate = true
+        end
       end
     end
   end
@@ -767,7 +994,7 @@ function GBB.ParseMessage( msg, name, channel )
   if doUpdate then
     for i, req in pairs( GBB.RequestList ) do
       if type( req ) == "table" then
-        if req.name == name and req.last ~= requestTime and req.dungeon ~= "TRADE" then
+        if req.name == name and req.last ~= requestTime then
           GBB.RequestList[ i ] = nil
           GBB.ClearNeeded = true
         end
@@ -789,6 +1016,9 @@ function GBB.ParseMessage( msg, name, channel )
     GBB.RequestList[ index ].IsHeroic = isHeroic
     GBB.RequestList[ index ].last = requestTime
   end
+
+  -- Update the UI after adding/updating requests
+  GBB.UpdateList()
 end
 
 function GBB.UnfoldAllDungeon()
@@ -804,11 +1034,13 @@ function GBB.FoldAllDungeon()
 end
 
 local function createMenu( DungeonID, req )
-  if not GBB.PopupDynamic:Wipe( "request" .. (DungeonID or "nil") .. (req and "request" or "nil") ) then
+  -- Make menu name unique to prevent Wipe from returning false
+  local menuName = "request" .. (DungeonID or "nil") .. (req and "request" or "nil") .. "_" .. time()
+  if not GBB.PopupDynamic:Wipe( menuName ) then
     return
   end
   if req then
-    GBB.PopupDynamic:AddItem( string.format( GBB.L[ "BtnWho" ], req.name ), false, WhoRequest, req.name )
+    GBB.PopupDynamic:AddItem( string.format( GBB.L[ "BtnWho" ], req.name ), false, GBB.WhoRequest, req.name )
     GBB.PopupDynamic:AddItem( string.format( GBB.L[ "BtnWhisper" ], req.name ), false, WhisperRequest, req.name )
     GBB.PopupDynamic:AddItem( string.format( GBB.L[ "BtnInvite" ], req.name ), false, InviteRequest, req.name )
     GBB.PopupDynamic:AddItem( string.format( GBB.L[ "BtnIgnore" ], req.name ), false, IgnoreRequest, req.name )
@@ -849,6 +1081,13 @@ function GBB.ClickDungeon( self, button )
   if id == nil or id == 0 then return end
 
   if button == "LeftButton" then
+    if IsShiftKeyDown() then
+      -- Shift-click: refresh all players listed for this dungeon via /who batching
+      if GBB.RefreshDungeonPlayers then
+        GBB.RefreshDungeonPlayers( id )
+      end
+      return
+    end
     if GBB.FoldedDungeons[ id ] then
       GBB.FoldedDungeons[ id ] = false
     else
@@ -867,7 +1106,7 @@ function GBB.ClickRequest( self, button )
   local req = GBB.RequestList[ tonumber( id ) ]
   if button == "LeftButton" then
     if IsShiftKeyDown() then
-      WhoRequest( req.name )
+      GBB.WhoRequest( req.name )
       --SendWho( req.name )
     elseif IsControlKeyDown() then
       InviteRequest( req.name )
@@ -888,7 +1127,7 @@ function GBB.RequestShowTooltip( self )
     GameTooltip_SetDefaultAnchor( GameTooltip, UIParent )
     GameTooltip:SetOwner( GroupBulletinBoardFrame, "ANCHOR_TOP", 0, 0 )
     GameTooltip:ClearLines()
-    
+
     GameTooltip:AddLine( req.message, 0.9, 0.9, 0.9, 1 )
 
     if GBB.DB.ChatStyle then
@@ -926,4 +1165,33 @@ end
 
 function GBB.RequestHideTooltip( self )
   GameTooltip:Hide()
+end
+
+-- Batch /who for all unique players currently listed for a dungeon
+function GBB.RefreshDungeonPlayers( dungeon )
+  if not dungeon then return end
+  local unique = {}
+  local names = {}
+  for i, req in pairs( GBB.RequestList ) do
+    if type( req ) == "table" and req.dungeon == dungeon and req.name and req.last and req.last + GBB.DB.TimeOut > time() then
+      if not unique[ req.name ] then
+        unique[ req.name ] = true
+        names[ #names + 1 ] = req.name
+      end
+    end
+  end
+
+  if #names == 0 then return end
+
+  local delay = 0
+  for _, name in ipairs( names ) do
+    C_Timer.After( delay, function()
+      if GBB.WhoRequest then
+        GBB.WhoRequest( name )
+      else
+        GBB.Tool.RunSlashCmd( "/who " .. name )
+      end
+    end )
+    delay = delay + 0.6 -- simple throttle between /who calls
+  end
 end

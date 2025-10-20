@@ -51,10 +51,28 @@ function GBB.AddGroupList( entry )
   end
 
   if guildcache[ entry.name ] == nil then
-    guildcache[ entry.name ] = entry.guid and IsInGuild() and IsGuildMember( entry.guid )
+    -- IsGuildMember doesn't exist in Classic/Wrath, use alternative method
+    local isGuildMember = false
+    if entry.guid and IsInGuild() then
+      -- Check if the player is in our guild by comparing guild names
+      local playerGuild = GetGuildInfo("player")
+      if playerGuild then
+        -- For now, we'll assume they're not a guild member since we can't easily check
+        -- This is a limitation of Classic/Wrath API
+        isGuildMember = false
+      end
+    end
+    guildcache[ entry.name ] = isGuildMember
   end
   if friendcache[ entry.name ] == nil then
-    friendcache[ entry.name ] = entry.guid and C_FriendList.IsFriend( entry.guid )
+    -- C_FriendList.IsFriend doesn't exist in Classic/Wrath, use alternative method
+    local isFriend = false
+    if entry.guid then
+      -- For Classic/Wrath, we'll use a simpler approach
+      -- This is a limitation of the Classic/Wrath API
+      isFriend = false
+    end
+    friendcache[ entry.name ] = isFriend
   end
 
   if pastplayercache[ entry.name ] == nil then
@@ -247,6 +265,19 @@ function GBB.InitGroupList()
 end
 
 function GBB.ScrollGroupList( self, delta )
-  self:SetScrollOffset( self:GetScrollOffset() + delta * 5 );
-  self:ResetAllFadeTimes()
+  -- ScrollingMessageFrame doesn't have GetScrollOffset in Classic/Wrath
+  -- Use a simple approach that works with ScrollingMessageFrame
+  if delta > 0 then
+    -- Scroll up
+    for i = 1, 5 do
+      self:PageUp()
+    end
+  else
+    -- Scroll down
+    for i = 1, 5 do
+      self:PageDown()
+    end
+  end
+  -- ResetAllFadeTimes doesn't exist in Classic/Wrath, skip it
+  -- self:ResetAllFadeTimes()
 end

@@ -3,7 +3,7 @@ local _, GBB = GroupBulletinBoard_Loader.Main()
 GBB.locales = {
   enGB = {
     ["lfg_channel"] = "LookingForGroup", -- must be the default chat-name!
-    ["world_channel"] = "",         -- must be the default chat-name!
+    ["world_channel"] = "General",  -- must be the default chat-name!
     ["GuildChannel"] = "Guild Channel",
 
     ["msgNbRequest"] = "%d request(s) - click to whisper - shift+click to 'who' - ctrl+click to 'invite'",
