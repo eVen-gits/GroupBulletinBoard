@@ -250,6 +250,185 @@ function GBB.ResetWindow()
   GBB.ResizeFrameList()
 end
 
+function GBB.ResetUI()
+  -- Force a complete UI reset by clearing everything and rebuilding
+  print("GBB: Starting UI reset...")
+
+  -- Reset column widths to force recalculation
+  if GBB.DB then
+    GBB.DB.widthNames = 0
+    GBB.DB.widthTimes = 0
+  end
+
+  -- First, clean up any orphaned frames that might exist
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      -- Reset font and size to prevent large background text
+      local nameFrame = _G["GBB.Item_" .. i .. "_name"]
+      local messageFrame = _G["GBB.Item_" .. i .. "_message"]
+      local timeFrame = _G["GBB.Item_" .. i .. "_time"]
+      if nameFrame then
+        nameFrame:SetText("")
+        nameFrame:SetFontObject("GameFontNormal")
+        if nameFrame.SetScale then
+          nameFrame:SetScale(1)
+        end
+      end
+      if messageFrame then
+        messageFrame:SetText("")
+        messageFrame:SetFontObject("GameFontNormal")
+        if messageFrame.SetScale then
+          messageFrame:SetScale(1)
+        end
+      end
+      if timeFrame then
+        timeFrame:SetText("")
+        timeFrame:SetFontObject("GameFontNormal")
+        if timeFrame.SetScale then
+          timeFrame:SetScale(1)
+        end
+      end
+
+      -- Completely destroy the frame
+      frame:Hide()
+      frame:ClearAllPoints()
+      frame:SetParent(nil)
+      if frame.SetScale then
+        frame:SetScale(1)
+      end
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      -- Remove from global namespace
+      _G["GBB.Item_" .. i] = nil
+    end
+  end
+
+  -- Clean up any orphaned dungeon frames
+  for dungeon, _ in pairs(GBB.dungeonNames or {}) do
+    local frame = _G["GBB.Dungeon_" .. dungeon]
+    if frame then
+      frame:Hide()
+      frame:ClearAllPoints()
+      frame:SetParent(nil)
+      if frame.SetScale then
+        frame:SetScale(1)
+      end
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      _G["GBB.Dungeon_" .. dungeon] = nil
+    end
+  end
+
+  -- Clean up any orphaned subheaders
+  for i = 1, 1000 do
+    local frame = _G["GBB.SubHeader_" .. i]
+    if frame then
+      frame:Hide()
+      frame:ClearAllPoints()
+      frame:SetParent(nil)
+      if frame.SetScale then
+        frame:SetScale(1)
+      end
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      _G["GBB.SubHeader_" .. i] = nil
+    end
+  end
+
+  -- Additional cleanup for any frames that might be stuck in the background
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      -- Completely destroy orphaned frames
+      frame:Hide()
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      frame:SetParent(nil)
+      frame:ClearAllPoints()
+      frame:SetWidth(1)
+      frame:SetHeight(1)
+
+      -- Destroy child frames too
+      local nameFrame = _G["GBB.Item_" .. i .. "_name"]
+      local messageFrame = _G["GBB.Item_" .. i .. "_message"]
+      local timeFrame = _G["GBB.Item_" .. i .. "_time"]
+
+      if nameFrame then
+        nameFrame:SetText("")
+        nameFrame:SetParent(nil)
+        nameFrame:Hide()
+      end
+      if messageFrame then
+        messageFrame:SetText("")
+        messageFrame:SetParent(nil)
+        messageFrame:Hide()
+      end
+      if timeFrame then
+        timeFrame:SetText("")
+        timeFrame:SetParent(nil)
+        timeFrame:Hide()
+      end
+
+      -- Remove from global namespace completely
+      _G["GBB.Item_" .. i] = nil
+      _G["GBB.Item_" .. i .. "_name"] = nil
+      _G["GBB.Item_" .. i .. "_message"] = nil
+      _G["GBB.Item_" .. i .. "_time"] = nil
+    end
+  end
+
+  -- Hide and reset all frames but keep the table structure
+  if GBB.FramesEntries then
+    for i = 1, 100 do
+      if GBB.FramesEntries[i] then
+        GBB.FramesEntries[i]:Hide()
+        GBB.FramesEntries[i]:ClearAllPoints()
+        GBB.FramesEntries[i]:SetHeight(1)
+        -- Don't destroy the frames, just reset them
+      end
+    end
+  end
+
+  -- Hide and reset subheaders
+  if GBB.SubHeaders then
+    for _, subHeader in ipairs( GBB.SubHeaders ) do
+      if subHeader then
+        subHeader:Hide()
+        subHeader:ClearAllPoints()
+        subHeader:SetParent(nil)
+      end
+    end
+    GBB.SubHeaders = {}
+  end
+
+  -- Clear the scroll child frame
+  if GroupBulletinBoardFrame_ScrollChildFrame then
+    GroupBulletinBoardFrame_ScrollChildFrame:SetHeight(1)
+  end
+
+  -- Force a complete refresh
+  GBB.ClearNeeded = true
+
+  -- Small delay to ensure frames are properly cleared before rebuilding
+  C_Timer.After(0.1, function()
+    if GBB.UpdateList then
+      GBB.UpdateList()
+    end
+
+    -- Update scroll frame after rebuild
+    if GroupBulletinBoardFrame_ScrollFrame and GroupBulletinBoardFrame_ScrollChildFrame then
+      GroupBulletinBoardFrame_ScrollFrame:UpdateScrollChildRect()
+    end
+
+    print("GBB: UI reset complete - all orphaned frames cleaned up")
+  end)
+end
+
 function GBB.ResizeFrameList()
   local w
   GroupBulletinBoardFrame_ScrollFrame:SetHeight( GroupBulletinBoardFrame:GetHeight() - 55 - 25 )
@@ -274,6 +453,24 @@ function GBB.ToggleWindow()
   if GroupBulletinBoardFrame:IsVisible() then
     GBB.HideWindow()
   else
+    -- Clean up orphaned frames before showing
+    for i = 1, 1000 do
+      local frame = _G["GBB.Item_" .. i]
+      if frame then
+        frame:Hide()
+        if frame.SetAlpha then
+          frame:SetAlpha(0)
+        end
+        frame:SetParent(nil)
+        frame:ClearAllPoints()
+        frame:SetWidth(1)
+        frame:SetHeight(1)
+        _G["GBB.Item_" .. i] = nil
+        _G["GBB.Item_" .. i .. "_name"] = nil
+        _G["GBB.Item_" .. i .. "_message"] = nil
+        _G["GBB.Item_" .. i .. "_time"] = nil
+      end
+    end
     GBB.ShowWindow()
   end
 end
@@ -863,10 +1060,68 @@ end
 function GBB.OnShow()
   GBB.InterfaceOptionsFrame.Rise()
   GBB.Options.DoRefresh()
+
+  -- Aggressive cleanup when window is shown
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      frame:Hide()
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      frame:SetParent(nil)
+      frame:ClearAllPoints()
+      frame:SetWidth(1)
+      frame:SetHeight(1)
+
+      -- Destroy child frames
+      local nameFrame = _G["GBB.Item_" .. i .. "_name"]
+      local messageFrame = _G["GBB.Item_" .. i .. "_message"]
+      local timeFrame = _G["GBB.Item_" .. i .. "_time"]
+
+      if nameFrame then
+        nameFrame:SetText("")
+        nameFrame:SetParent(nil)
+        nameFrame:Hide()
+      end
+      if messageFrame then
+        messageFrame:SetText("")
+        messageFrame:SetParent(nil)
+        messageFrame:Hide()
+      end
+      if timeFrame then
+        timeFrame:SetText("")
+        timeFrame:SetParent(nil)
+        timeFrame:Hide()
+      end
+
+      -- Remove from global namespace
+      _G["GBB.Item_" .. i] = nil
+      _G["GBB.Item_" .. i .. "_name"] = nil
+      _G["GBB.Item_" .. i .. "_message"] = nil
+      _G["GBB.Item_" .. i .. "_time"] = nil
+    end
+  end
 end
 
 function GBB.OnHide()
   GBB.InterfaceOptionsFrame.Sink()
+
+  -- Clean up any orphaned frames when window is hidden
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      frame:Hide()
+      if frame.SetAlpha then
+        frame:SetAlpha(0)
+      end
+      frame:SetParent(nil)
+      frame:ClearAllPoints()
+      frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", -1000, -1000)
+      frame:SetWidth(1)
+      frame:SetHeight(1)
+    end
+  end
 end
 
 function GBB.OnLoad()

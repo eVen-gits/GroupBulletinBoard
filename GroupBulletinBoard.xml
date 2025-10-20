@@ -114,6 +114,29 @@
 				</Scripts>
 			</Button>
 
+			<Button name="$parentResetUIButton" inherits="UIPanelButtonTemplate">
+				<Layers>
+					<Layer level="ARTWORK">
+						<FontString inherits="GameFontNormalSmall" text="Reset UI">
+							<Anchors>
+								<Anchor point="CENTER"/>
+							</Anchors>
+						</FontString>
+					</Layer>
+				</Layers>
+				<Anchors>
+					<Anchor point="RIGHT" relativeTo="$parentSettingsButton" relativePoint="LEFT"/>
+				</Anchors>
+				<Size>
+					<AbsDimension x="60" y="18"/>
+				</Size>
+				<Scripts>
+					<OnClick>
+						GroupBulletinBoard_Addon.ResetUI()
+					</OnClick>
+				</Scripts>
+			</Button>
+
 			<!-- announcebox -->
 			<Button name="$parentSelectChannel" inherits="UIPanelButtonTemplate" text="channel">
 				<Anchors>

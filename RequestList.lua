@@ -157,32 +157,66 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   local ItemFrameName = "GBB.Item_" .. i
 
   if GBB.FramesEntries[ i ] == nil then
+    -- First, clean up any existing orphaned frame with this name
+    local existingFrame = _G[ItemFrameName]
+    if existingFrame then
+      existingFrame:Hide()
+      existingFrame:ClearAllPoints()
+      existingFrame:SetParent(nil)
+      _G[ItemFrameName] = nil
+      _G[ItemFrameName .. "_name"] = nil
+      _G[ItemFrameName .. "_message"] = nil
+      _G[ItemFrameName .. "_time"] = nil
+    end
+
     GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
       "GroupBulletinBoard_TmpRequest" )
 
-    _G[ ItemFrameName .. "_name" ]:SetPoint( "TOPLEFT" )
-    _G[ ItemFrameName .. "_time" ]:SetPoint( "TOP", _G[ ItemFrameName .. "_name" ], "TOP", 0, 0 )
+    -- Ensure child frames exist before accessing them
+    if _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_name" ]:SetPoint( "TOPLEFT" )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:SetPoint( "TOP", _G[ ItemFrameName .. "_name" ], "TOP", 0, 0 )
+    end
 
-    _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( false )
-    _G[ ItemFrameName .. "_message" ]:SetFontObject( GBB.DB.FontSize )
-    _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
-    _G[ ItemFrameName .. "_time" ]:SetFontObject( GBB.DB.FontSize )
+    if _G[ ItemFrameName .. "_message" ] then
+      _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( false )
+      _G[ ItemFrameName .. "_message" ]:SetFontObject( GBB.DB.FontSize )
+    end
+    if _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:SetFontObject( GBB.DB.FontSize )
+    end
     if GBB.DontTrunicate then
       GBB.ClearNeeded = true
     end
     GBB.Tool.EnableHyperlink( GBB.FramesEntries[ i ] )
+  else
+    -- Ensure existing frame is properly parented
+    if GBB.FramesEntries[ i ]:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame then
+      GBB.FramesEntries[ i ]:SetParent(GroupBulletinBoardFrame_ScrollChildFrame)
+    end
   end
 
   -- Set initial height to a reasonable default instead of 999
   GBB.FramesEntries[ i ]:SetHeight( 20 )
-  _G[ ItemFrameName .. "_message" ]:SetHeight( 20 )
+  if _G[ ItemFrameName .. "_message" ] then
+    _G[ ItemFrameName .. "_message" ]:SetHeight( 20 )
+  end
 
   if GBB.DB.DontTrunicate then
     --_G[ItemFrameName .. "_message"]:SetMaxLines(99)
-    _G[ ItemFrameName .. "_message" ]:SetText( " " )
+    if _G[ ItemFrameName .. "_message" ] then
+      _G[ ItemFrameName .. "_message" ]:SetText( " " )
+    end
   else
     --_G[ItemFrameName .. "_message"]:SetMaxLines(1)
-    _G[ ItemFrameName .. "_message" ]:SetText( " " )
+    if _G[ ItemFrameName .. "_message" ] then
+      _G[ ItemFrameName .. "_message" ]:SetText( " " )
+    end
   end
 
 
@@ -190,11 +224,19 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   --_G[ItemFrameName .. "_time"]:SetScale(doCompact)
 
   if doCompact < 1 then
-    _G[ ItemFrameName .. "_message" ]:SetPoint( "TOPLEFT", _G[ ItemFrameName .. "_name" ], "BOTTOMLEFT", 0, 0 )
-    _G[ ItemFrameName .. "_message" ]:SetPoint( "RIGHT", _G[ ItemFrameName .. "_time" ], "RIGHT", 0, 0 )
+    if _G[ ItemFrameName .. "_message" ] and _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_message" ]:SetPoint( "TOPLEFT", _G[ ItemFrameName .. "_name" ], "BOTTOMLEFT", 0, 0 )
+    end
+    if _G[ ItemFrameName .. "_message" ] and _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_message" ]:SetPoint( "RIGHT", _G[ ItemFrameName .. "_time" ], "RIGHT", 0, 0 )
+    end
   else
-    _G[ ItemFrameName .. "_message" ]:SetPoint( "TOPLEFT", _G[ ItemFrameName .. "_name" ], "TOPRIGHT", 10, 0 )
-    _G[ ItemFrameName .. "_message" ]:SetPoint( "RIGHT", _G[ ItemFrameName .. "_time" ], "LEFT", -10, 0 )
+    if _G[ ItemFrameName .. "_message" ] and _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_message" ]:SetPoint( "TOPLEFT", _G[ ItemFrameName .. "_name" ], "TOPRIGHT", 10, 0 )
+    end
+    if _G[ ItemFrameName .. "_message" ] and _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_message" ]:SetPoint( "RIGHT", _G[ ItemFrameName .. "_time" ], "LEFT", -10, 0 )
+    end
   end
 
   if req then
@@ -249,51 +291,100 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
     end
 
     if GBB.DB.ChatStyle then
-      _G[ ItemFrameName .. "_name" ]:SetText()
-      _G[ ItemFrameName .. "_message" ]:SetText( ClassIcon ..
-        "[" .. prefix .. req.name .. suffix .. "]" .. FriendIcon .. ": " .. req.message )
+      if _G[ ItemFrameName .. "_name" ] then
+        _G[ ItemFrameName .. "_name" ]:SetText()
+      end
+      if _G[ ItemFrameName .. "_message" ] then
+        _G[ ItemFrameName .. "_message" ]:SetText( ClassIcon ..
+          "[" .. prefix .. req.name .. suffix .. "]" .. FriendIcon .. ": " .. req.message )
+      end
     else
-      _G[ ItemFrameName .. "_name" ]:SetText( ClassIcon .. prefix .. req.name .. LevelText .. suffix .. FriendIcon )
-      _G[ ItemFrameName .. "_message" ]:SetText( typePrefix .. suffix .. req.message )
-      _G[ ItemFrameName .. "_time" ]:SetText( ti )
+      if _G[ ItemFrameName .. "_name" ] then
+        _G[ ItemFrameName .. "_name" ]:SetText( ClassIcon .. prefix .. req.name .. LevelText .. suffix .. FriendIcon )
+      end
+      if _G[ ItemFrameName .. "_message" ] then
+        _G[ ItemFrameName .. "_message" ]:SetText( typePrefix .. suffix .. req.message )
+      end
+      if _G[ ItemFrameName .. "_time" ] then
+        _G[ ItemFrameName .. "_time" ]:SetText( ti )
+      end
     end
 
-    _G[ ItemFrameName .. "_message" ]:SetTextColor( GBB.DB.EntryColor.r, GBB.DB.EntryColor.g, GBB.DB.EntryColor.b,
-      GBB.DB.EntryColor.a )
-    _G[ ItemFrameName .. "_time" ]:SetTextColor( GBB.DB.TimeColor.r, GBB.DB.TimeColor.g, GBB.DB.TimeColor.b,
-      GBB.DB.TimeColor.a )
+    if _G[ ItemFrameName .. "_message" ] then
+      _G[ ItemFrameName .. "_message" ]:SetTextColor( GBB.DB.EntryColor.r, GBB.DB.EntryColor.g, GBB.DB.EntryColor.b,
+        GBB.DB.EntryColor.a )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:SetTextColor( GBB.DB.TimeColor.r, GBB.DB.TimeColor.g, GBB.DB.TimeColor.b,
+        GBB.DB.TimeColor.a )
+    end
   else
-    _G[ ItemFrameName .. "_name" ]:SetText( "Aag " )
-    _G[ ItemFrameName .. "_message" ]:SetText( "Aag " )
-    _G[ ItemFrameName .. "_time" ]:SetText( "Aag " )
+    if _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_name" ]:SetText( "Aag " )
+    end
+    if _G[ ItemFrameName .. "_message" ] then
+      _G[ ItemFrameName .. "_message" ]:SetText( "Aag " )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:SetText( "Aag " )
+    end
   end
 
 
   if GBB.DB.ChatStyle then
-    _G[ ItemFrameName .. "_time" ]:Hide()
-    _G[ ItemFrameName .. "_name" ]:Hide()
-
-    _G[ ItemFrameName .. "_name" ]:SetWidth( 1 )
-    _G[ ItemFrameName .. "_time" ]:SetPoint( "LEFT", _G[ AnchorRight ], "RIGHT", 0, 0 )
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:Hide()
+    end
+    if _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_name" ]:Hide()
+      _G[ ItemFrameName .. "_name" ]:SetWidth( 1 )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:SetPoint( "LEFT", _G[ AnchorRight ], "RIGHT", 0, 0 )
+    end
   else
-    _G[ ItemFrameName .. "_time" ]:Show()
-    _G[ ItemFrameName .. "_name" ]:Show()
-    -- Use precomputed widths for this render pass to avoid mid-pass reflow
-    local nameWidth = (GBB.DB.widthNames and GBB.DB.widthNames > 0) and GBB.DB.widthNames or (_G[ ItemFrameName .. "_name" ]:GetStringWidth() + 10)
-    local timeWidth = (GBB.DB.widthTimes and GBB.DB.widthTimes > 0) and GBB.DB.widthTimes or (_G[ ItemFrameName .. "_time" ]:GetStringWidth() + 10)
-    _G[ ItemFrameName .. "_name" ]:SetWidth( nameWidth )
-    _G[ ItemFrameName .. "_time" ]:SetPoint( "RIGHT", GBB.FramesEntries[ i ], "RIGHT", -10, 0 )
+    if _G[ ItemFrameName .. "_time" ] then
+      _G[ ItemFrameName .. "_time" ]:Show()
+    end
+    if _G[ ItemFrameName .. "_name" ] then
+      _G[ ItemFrameName .. "_name" ]:Show()
+      -- Use precomputed widths for this render pass to avoid mid-pass reflow
+      local nameWidth = (GBB.DB.widthNames and GBB.DB.widthNames > 0) and GBB.DB.widthNames or (_G[ ItemFrameName .. "_name" ]:GetStringWidth() + 10)
+      _G[ ItemFrameName .. "_name" ]:SetWidth( nameWidth )
+    end
+    if _G[ ItemFrameName .. "_time" ] then
+      local timeWidth = (GBB.DB.widthTimes and GBB.DB.widthTimes > 0) and GBB.DB.widthTimes or (_G[ ItemFrameName .. "_time" ]:GetStringWidth() + 10)
+      _G[ ItemFrameName .. "_time" ]:SetPoint( "RIGHT", GBB.FramesEntries[ i ], "RIGHT", -10, 0 )
+    end
   end
   local h
   if GBB.DB.ChatStyle then
-    h = _G[ ItemFrameName .. "_message" ]:GetStringHeight()
-  else
-    if doCompact < 1 then
-      h = _G[ ItemFrameName .. "_name" ]:GetStringHeight() + _G[ ItemFrameName .. "_message" ]:GetStringHeight()
-    elseif GBB.DB.DontTrunicate then
+    if _G[ ItemFrameName .. "_message" ] then
       h = _G[ ItemFrameName .. "_message" ]:GetStringHeight()
     else
-      h = _G[ ItemFrameName .. "_name" ]:GetStringHeight()
+      h = 16
+    end
+  else
+    if doCompact < 1 then
+      h = 0
+      if _G[ ItemFrameName .. "_name" ] then
+        h = h + _G[ ItemFrameName .. "_name" ]:GetStringHeight()
+      end
+      if _G[ ItemFrameName .. "_message" ] then
+        h = h + _G[ ItemFrameName .. "_message" ]:GetStringHeight()
+      end
+    elseif GBB.DB.DontTrunicate then
+      if _G[ ItemFrameName .. "_message" ] then
+        h = _G[ ItemFrameName .. "_message" ]:GetStringHeight()
+      else
+        h = 16
+      end
+    else
+      if _G[ ItemFrameName .. "_name" ] then
+        h = _G[ ItemFrameName .. "_name" ]:GetStringHeight()
+      else
+        h = 16
+      end
     end
   end
 
@@ -306,7 +397,9 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
 
   -- Indent entries slightly to the right for visual clarity
   GBB.FramesEntries[ i ]:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
-  _G[ ItemFrameName .. "_message" ]:SetHeight( h + 10 )
+  if _G[ ItemFrameName .. "_message" ] then
+    _G[ ItemFrameName .. "_message" ]:SetHeight( h + 10 )
+  end
   GBB.FramesEntries[ i ]:SetHeight( h )
 
   -- Ensure the frame has proper width and is visible
@@ -441,6 +534,58 @@ end
 local ownRequestDungeons = {}
 function GBB.UpdateList()
   GBB.Clear()
+
+  -- Aggressive cleanup of ALL orphaned frames before updating
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      -- Check if this frame is orphaned (not in FramesEntries or has wrong parent)
+      local isOrphaned = not GBB.FramesEntries[i] or frame:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame
+
+      if isOrphaned then
+        frame:Hide()
+        if frame.SetAlpha then
+          frame:SetAlpha(0)
+        end
+        frame:SetParent(nil)
+        frame:ClearAllPoints()
+        frame:SetWidth(1)
+        frame:SetHeight(1)
+
+        -- Destroy child frames
+        local nameFrame = _G["GBB.Item_" .. i .. "_name"]
+        local messageFrame = _G["GBB.Item_" .. i .. "_message"]
+        local timeFrame = _G["GBB.Item_" .. i .. "_time"]
+
+        if nameFrame then
+          nameFrame:SetText("")
+          nameFrame:SetParent(nil)
+          nameFrame:Hide()
+        end
+        if messageFrame then
+          messageFrame:SetText("")
+          messageFrame:SetParent(nil)
+          messageFrame:Hide()
+        end
+        if timeFrame then
+          timeFrame:SetText("")
+          timeFrame:SetParent(nil)
+          timeFrame:Hide()
+        end
+
+        -- Remove from global namespace
+        _G["GBB.Item_" .. i] = nil
+        _G["GBB.Item_" .. i .. "_name"] = nil
+        _G["GBB.Item_" .. i .. "_message"] = nil
+        _G["GBB.Item_" .. i .. "_time"] = nil
+
+        -- Also remove from FramesEntries if it exists there
+        if GBB.FramesEntries[i] then
+          GBB.FramesEntries[i] = nil
+        end
+      end
+    end
+  end
 
   if not GroupBulletinBoardFrame:IsVisible() then
     -- Don't return early - we still want to process requests even if frame is not visible
@@ -661,7 +806,7 @@ function GBB.UpdateList()
 
   -- Schedule periodic cleanup to prevent accumulation
   if not GBB.CleanupTimer then
-    GBB.CleanupTimer = C_Timer.NewTicker(30, function()
+    GBB.CleanupTimer = C_Timer.NewTicker(10, function()
       -- Clean up any orphaned subheaders
       for i = 1, 1000 do
         local frame = _G["GBB.SubHeader_" .. i]
@@ -676,6 +821,48 @@ function GBB.UpdateList()
         if GBB.FramesEntries[i] and not GBB.FramesEntries[i]:IsVisible() then
           GBB.FramesEntries[i]:SetHeight(1)
           GBB.FramesEntries[i]:ClearAllPoints()
+        end
+      end
+      -- Aggressive cleanup for any visible orphaned frames
+      for i = 1, 1000 do
+        local frame = _G["GBB.Item_" .. i]
+        if frame and frame:IsVisible() and not GBB.FramesEntries[i] then
+          -- Completely destroy orphaned frames
+          frame:Hide()
+          if frame.SetAlpha then
+            frame:SetAlpha(0)
+          end
+          frame:SetParent(nil)
+          frame:ClearAllPoints()
+          frame:SetWidth(1)
+          frame:SetHeight(1)
+
+          -- Destroy child frames
+          local nameFrame = _G["GBB.Item_" .. i .. "_name"]
+          local messageFrame = _G["GBB.Item_" .. i .. "_message"]
+          local timeFrame = _G["GBB.Item_" .. i .. "_time"]
+
+          if nameFrame then
+            nameFrame:SetText("")
+            nameFrame:SetParent(nil)
+            nameFrame:Hide()
+          end
+          if messageFrame then
+            messageFrame:SetText("")
+            messageFrame:SetParent(nil)
+            messageFrame:Hide()
+          end
+          if timeFrame then
+            timeFrame:SetText("")
+            timeFrame:SetParent(nil)
+            timeFrame:Hide()
+          end
+
+          -- Remove from global namespace
+          _G["GBB.Item_" .. i] = nil
+          _G["GBB.Item_" .. i .. "_name"] = nil
+          _G["GBB.Item_" .. i .. "_message"] = nil
+          _G["GBB.Item_" .. i .. "_time"] = nil
         end
       end
     end)
