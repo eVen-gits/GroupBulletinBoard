@@ -790,6 +790,7 @@ end
 local function Event_CHAT_MSG_CHANNEL( msg, name, _3, _4, _5, _6, _7, channelID, channel, _10, _11 )
   if not GBB.Initalized then return end
 
+  -- Removed verbose channel debug output
 
   if GBB.DBChar and GBB.DBChar.channel and GBB.DBChar.channel[ channelID ] then
     GBB.ParseMessage( msg, name, channel )

@@ -863,6 +863,218 @@ local function is_non_ascii( text )
   return false
 end
 
+-- LFG addon integration
+function GBB.ParseLFGMessage( msg, name, channel )
+  -- Check if this is an LFG addon message
+  if string.sub(msg, 1, 4) == 'LFG:' then
+    if GBB.DB.OnDebug then
+      print("GBB: Parsing LFG addon message from " .. tostring(name))
+    end
+
+    local requestTime = time()
+    local doUpdate = false
+
+    -- Parse LFG format: "LFG:dungeoncode:role dungeoncode:role ..."
+    local lfgEx = GBB.Tool.Split(msg, ' ')
+
+    for _, lfg in ipairs(lfgEx) do
+      local spamSplit = GBB.Tool.Split(lfg, ':')
+      local mDungeonCode = spamSplit[2]
+      local mRole = spamSplit[3]
+
+      if mDungeonCode and mRole then
+        local dungeonName = GBB.GetDungeonNameFromLFGCode(mDungeonCode)
+        if dungeonName then
+          -- Create a synthetic message for GBB processing
+          -- The role indicates what the person is PROVIDING, so they're looking for a group
+          local syntheticMsg = "LFG " .. dungeonName .. " " .. mRole
+
+          if GBB.DB.OnDebug then
+            print("GBB: LFG -> " .. tostring(name) .. " providing " .. mRole .. " for " .. dungeonName)
+          end
+
+          -- Process as regular GBB message
+          local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( syntheticMsg, name )
+
+          if type( dungeonList ) == "table" and next( dungeonList ) then
+            for dungeon, id in pairs( dungeonList ) do
+              if id == true and dungeon ~= nil and dungeon ~= "TRADE" and dungeon ~= "MISC" then
+                local index = 0
+
+                -- Check if entry already exists
+                for ir, req in pairs( GBB.RequestList ) do
+                  if type( req ) == "table" and req.name == name and req.dungeon == dungeon then
+                    index = ir
+                    break
+                  end
+                end
+
+                local isRaid = GBB.RaidList[ dungeon ] ~= nil
+
+                if index == 0 then
+                  index = #GBB.RequestList + 1
+                  GBB.RequestList[ index ] = {}
+                  GBB.RequestList[ index ].name = name
+                  GBB.RequestList[ index ].class = nil
+                  GBB.RequestList[ index ].start = requestTime
+                  GBB.RequestList[ index ].dungeon = dungeon
+                  GBB.RequestList[ index ].IsGuildMember = false
+                  GBB.RequestList[ index ].IsFriend = false
+                  GBB.RequestList[ index ].IsPastPlayer = GBB.GroupTrans[ name ] ~= nil
+                end
+
+                if GBB.FilterDungeon( dungeon, isHeroic, isRaid ) then
+                  GBB.RequestList[ index ].message = syntheticMsg
+                  GBB.RequestList[ index ].IsHeroic = isHeroic
+                  GBB.RequestList[ index ].IsRaid = isRaid
+                  GBB.RequestList[ index ].last = requestTime
+                  doUpdate = true
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+
+    if doUpdate then
+      GBB.UpdateList()
+    end
+
+    return true -- Message was processed as LFG
+  end
+
+  -- Check for LFM messages (Looking for More)
+  if string.sub(msg, 1, 4) == 'LFM:' then
+    if GBB.DB.OnDebug then
+      print("GBB: Parsing LFM addon message from " .. tostring(name))
+    end
+
+    local requestTime = time()
+    local doUpdate = false
+
+    -- Parse LFM format: "LFM:dungeoncode:tankcount:healercount:damagecount"
+    local lfmEx = GBB.Tool.Split(msg, ':')
+    local mDungeonCode = lfmEx[2]
+    local lfmTank = tonumber(lfmEx[3]) or 0
+    local lfmHealer = tonumber(lfmEx[4]) or 0
+    local lfmDamage = tonumber(lfmEx[5]) or 0
+
+    if mDungeonCode then
+      local dungeonName = GBB.GetDungeonNameFromLFGCode(mDungeonCode)
+      if dungeonName then
+        -- Create synthetic message for LFM (Looking for More)
+        local syntheticMsg = "LFM " .. dungeonName
+        if lfmTank > 0 then
+          syntheticMsg = syntheticMsg .. " need " .. lfmTank .. " tank"
+        end
+        if lfmHealer > 0 then
+          syntheticMsg = syntheticMsg .. " need " .. lfmHealer .. " healer"
+        end
+        if lfmDamage > 0 then
+          syntheticMsg = syntheticMsg .. " need " .. lfmDamage .. " dps"
+        end
+
+        -- Process the synthetic LFM message
+        local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( syntheticMsg, name )
+
+        if type( dungeonList ) == "table" and next( dungeonList ) then
+          for dungeon, id in pairs( dungeonList ) do
+            if id == true and dungeon ~= nil and dungeon ~= "TRADE" and dungeon ~= "MISC" then
+              local index = 0
+
+              -- Check if entry already exists
+              for ir, req in pairs( GBB.RequestList ) do
+                if type( req ) == "table" and req.name == name and req.dungeon == dungeon then
+                  index = ir
+                  break
+                end
+              end
+
+              local isRaid = GBB.RaidList[ dungeon ] ~= nil
+
+              if index == 0 then
+                index = #GBB.RequestList + 1
+                GBB.RequestList[ index ] = {}
+                GBB.RequestList[ index ].name = name
+                GBB.RequestList[ index ].class = nil
+                GBB.RequestList[ index ].start = requestTime
+                GBB.RequestList[ index ].dungeon = dungeon
+                GBB.RequestList[ index ].IsGuildMember = false
+                GBB.RequestList[ index ].IsFriend = false
+                GBB.RequestList[ index ].IsPastPlayer = GBB.GroupTrans[ name ] ~= nil
+              end
+
+              if GBB.FilterDungeon( dungeon, isHeroic, isRaid ) then
+                GBB.RequestList[ index ].message = syntheticMsg
+                GBB.RequestList[ index ].IsHeroic = isHeroic
+                GBB.RequestList[ index ].IsRaid = isRaid
+                GBB.RequestList[ index ].last = requestTime
+                doUpdate = true
+              end
+            end
+          end
+        end
+
+        if GBB.DB.OnDebug then
+          print("GBB: LFM -> " .. tostring(name) .. " needs " .. (lfmTank + lfmHealer + lfmDamage) .. " for " .. dungeonName)
+        end
+      end
+    end
+
+    if doUpdate then
+      GBB.UpdateList()
+    end
+
+    return true -- Message was processed as LFM
+  end
+
+  return false -- Not an LFG message
+end
+
+function GBB.GetDungeonNameFromLFGCode( code )
+  -- Map LFG addon codes to GBB dungeon names
+  local lfgToGBB = {
+    -- Regular dungeons
+    ['rfc'] = 'Ragefire Chasm',
+    ['wc'] = 'Wailing Caverns',
+    ['dm'] = 'Deadmines',
+    ['sfk'] = 'Shadowfang Keep',
+    ['stocks'] = 'The Stockade',
+    ['bfd'] = 'Blackfathom Deeps',
+    ['smgy'] = 'Scarlet Monastery Graveyard',
+    ['smlib'] = 'Scarlet Monastery Library',
+    ['gnomer'] = 'Gnomeregan',
+    ['rfk'] = 'Razorfen Kraul',
+    ['smarmory'] = 'Scarlet Monastery Armory',
+    ['smcath'] = 'Scarlet Monastery Cathedral',
+    ['rfd'] = 'Razorfen Downs',
+    ['ggm'] = 'Glittermurk Mines',
+    ['ulda'] = 'Uldaman',
+    ['zf'] = 'Zul\'Farrak',
+    ['maraorange'] = 'Maraudon Orange',
+    ['marapurple'] = 'Maraudon Purple',
+    ['maraprincess'] = 'Maraudon Princess',
+    ['st'] = 'Temple of Atal\'Hakkar',
+    ['brd'] = 'Blackrock Depths',
+    ['brdarena'] = 'Blackrock Depths Arena',
+    ['brdemp'] = 'Blackrock Depths Emperor',
+    ['lbrs'] = 'Lower Blackrock Spire',
+    ['bh'] = 'Baradin Hold',
+    ['scholo'] = 'Scholomance',
+    ['stratud'] = 'Stratholme: Undead District',
+    ['stratlive'] = 'Stratholme: Scarlet Bastion',
+    ['ubrs'] = 'Upper Blackrock Spire',
+
+    -- Elite encounters
+    ['ja'] = 'Jintha\'Alor',
+    ['ff'] = 'Felstone Fortress',
+    ['silithusd'] = 'Silithus Dailies'
+  }
+
+  return lfgToGBB[code]
+end
+
 function GBB.ParseMessage( msg, name, channel )
   if GBB.Initalized == false or name == nil or name == "" or msg == nil or msg == "" or string.len( msg ) < 4 then
     if GBB.DB.OnDebug then
@@ -871,8 +1083,21 @@ function GBB.ParseMessage( msg, name, channel )
     return
   end
 
+  if GBB.DB.OnDebug then
+    print("GBB: " .. tostring(name) .. ": " .. tostring(msg))
+  end
 
-  if GBB.DB.FilterNonAsciiMessages and is_non_ascii( msg ) then return end
+  if GBB.DB.FilterNonAsciiMessages and is_non_ascii( msg ) then
+    if GBB.DB.OnDebug then
+      print("GBB: Message filtered out - contains non-ASCII characters")
+    end
+    return
+  end
+
+  -- Check if this is an LFG addon message and parse it
+  if GBB.ParseLFGMessage( msg, name, channel ) then
+    return
+  end
 
   local requestTime = time()
   local doUpdate = false
@@ -908,6 +1133,13 @@ function GBB.ParseMessage( msg, name, channel )
   --flm RFD need healer and 3 dps
   local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( msg, name )
 
+  if GBB.DB.OnDebug and (isGood or isBad or next(dungeonList)) then
+    local dungeonCount = 0
+    for k, v in pairs(dungeonList) do
+      if v then dungeonCount = dungeonCount + 1 end
+    end
+    print("GBB: " .. tostring(name) .. " -> " .. dungeonCount .. " dungeons (good:" .. tostring(isGood) .. ", bad:" .. tostring(isBad) .. ")")
+  end
 
   if type( dungeonList ) ~= "table" then
     if GBB.DB and GBB.DB.OnDebug then
@@ -923,10 +1155,16 @@ function GBB.ParseMessage( msg, name, channel )
      (string.lower( GBB.L[ "world_channel" ] ) == string.lower( channel ) or
       string.lower( GBB.L[ "lfg_channel" ] ) == string.lower( channel )) then
     isGood = true
+    if GBB.DB.OnDebug then
+      print("GBB: " .. tostring(name) .. " -> marked good (UseAllInLFG)")
+    end
     if next( dungeonList ) == nil then
       -- Previously defaulted to MISC; we now skip creating MISC entirely
     end
   elseif isGood == false or isBad == true then
+    if GBB.DB.OnDebug then
+      print("GBB: " .. tostring(name) .. " -> filtered out (good:" .. tostring(isGood) .. ", bad:" .. tostring(isBad) .. ")")
+    end
     dungeonList = {}
   end
 
@@ -963,6 +1201,17 @@ function GBB.ParseMessage( msg, name, channel )
             else
               dungeonTXT = GBB.dungeonNames[ dungeon ] .. ", " .. dungeonTXT
             end
+            if GBB.DB.OnDebug then
+              print("GBB: " .. tostring(name) .. " -> added " .. dungeon)
+            end
+          else
+            if GBB.DB.OnDebug then
+              print("GBB: " .. tostring(name) .. " -> " .. dungeon .. " filtered out")
+            end
+          end
+        else
+          if GBB.DB.OnDebug then
+            print("GBB: " .. tostring(name) .. " -> updated " .. dungeon)
           end
         end
 
@@ -977,6 +1226,10 @@ function GBB.ParseMessage( msg, name, channel )
           doUpdate = true
         end
       end
+    end
+  else
+    if GBB.DB.OnDebug then
+      print("GBB: " .. tostring(name) .. " -> filtered out (wordcount: " .. wordcount .. ")")
     end
   end
 
