@@ -248,26 +248,6 @@ function GBB.ResetWindow()
   GroupBulletinBoardFrame:SetHeight( 500 )
   GBB.SaveAnchors()
   GBB.ResizeFrameList()
-  -- Reset column widths to force recalculation
-  if GBB.DB then
-    GBB.DB.widthNames = 0
-    GBB.DB.widthTimes = 0
-  end
-  -- Clear visual frames but keep data intact
-  if GBB.FramesEntries then
-    for k, f in pairs( GBB.FramesEntries ) do
-      if f and f.Hide then f:Hide() end
-    end
-  end
-  if GBB.SubHeaders then
-    for _, f in ipairs( GBB.SubHeaders ) do
-      if f and f.Hide then f:Hide() end
-    end
-    GBB.SubHeaders = {}
-  end
-  -- Force refresh
-  GBB.ClearNeeded = true
-  if GBB.UpdateList then GBB.UpdateList() end
 end
 
 function GBB.ResizeFrameList()

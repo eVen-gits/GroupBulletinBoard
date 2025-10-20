@@ -91,33 +91,10 @@
 				</Scripts>
 			</Button>
 
-      <Button name="$parentSettingsButton" inherits="UIPanelButtonTemplate">
-        <Layers>
-          <Layer level="ARTWORK">
-            <FontString inherits="GameFontNormalSmall" text="Settings">
-              <Anchors>
-                <Anchor point="CENTER"/>
-              </Anchors>
-            </FontString>
-          </Layer>
-        </Layers>
-				<Anchors>
-					<Anchor point="RIGHT" relativeTo="$parentCloseButton" relativePoint="LEFT"/>
-				</Anchors>
-        <Size>
-          <AbsDimension x="60" y="18"/>
-        </Size>
-				<Scripts>
-					<OnMouseDown>
-						GroupBulletinBoard_Addon.BtnSettings(button )
-					</OnMouseDown>
-				</Scripts>
-			</Button>
-
-			<Button name="$parentResetButton" inherits="UIPanelButtonTemplate">
+			<Button name="$parentSettingsButton" inherits="UIPanelButtonTemplate">
 				<Layers>
 					<Layer level="ARTWORK">
-						<FontString inherits="GameFontNormalSmall" text="Reset">
+						<FontString inherits="GameFontNormalSmall" text="Settings">
 							<Anchors>
 								<Anchor point="CENTER"/>
 							</Anchors>
@@ -125,14 +102,14 @@
 					</Layer>
 				</Layers>
 				<Anchors>
-					<Anchor point="RIGHT" relativeTo="$parentSettingsButton" relativePoint="LEFT"/>
+					<Anchor point="RIGHT" relativeTo="$parentCloseButton" relativePoint="LEFT"/>
 				</Anchors>
 				<Size>
 					<AbsDimension x="60" y="18"/>
 				</Size>
 				<Scripts>
 					<OnMouseDown>
-						GroupBulletinBoard_Addon.ResetWindow()
+						GroupBulletinBoard_Addon.BtnSettings(button )
 					</OnMouseDown>
 				</Scripts>
 			</Button>
