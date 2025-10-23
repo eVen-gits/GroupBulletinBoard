@@ -156,50 +156,52 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   local AnchorRight = "GroupBulletinBoardFrame_ScrollChildFrame"
   local ItemFrameName = "GBB.Item_" .. i
 
-  if GBB.FramesEntries[ i ] == nil then
-    -- First, clean up any existing orphaned frame with this name
-    local existingFrame = _G[ItemFrameName]
-    if existingFrame then
-      existingFrame:Hide()
-      existingFrame:ClearAllPoints()
-      existingFrame:SetParent(nil)
-      _G[ItemFrameName] = nil
-      _G[ItemFrameName .. "_name"] = nil
-      _G[ItemFrameName .. "_message"] = nil
-      _G[ItemFrameName .. "_time"] = nil
-    end
-
-    GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
-      "GroupBulletinBoard_TmpRequest" )
-
-    -- Ensure child frames exist before accessing them
-    if _G[ ItemFrameName .. "_name" ] then
-      _G[ ItemFrameName .. "_name" ]:SetPoint( "TOPLEFT" )
-    end
-    if _G[ ItemFrameName .. "_time" ] then
-      _G[ ItemFrameName .. "_time" ]:SetPoint( "TOP", _G[ ItemFrameName .. "_name" ], "TOP", 0, 0 )
-    end
-
-    if _G[ ItemFrameName .. "_message" ] then
-      _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( false )
-      _G[ ItemFrameName .. "_message" ]:SetFontObject( GBB.DB.FontSize )
-    end
-    if _G[ ItemFrameName .. "_name" ] then
-      _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
-    end
-    if _G[ ItemFrameName .. "_time" ] then
-      _G[ ItemFrameName .. "_time" ]:SetFontObject( GBB.DB.FontSize )
-    end
-    if GBB.DontTrunicate then
-      GBB.ClearNeeded = true
-    end
-    GBB.Tool.EnableHyperlink( GBB.FramesEntries[ i ] )
-  else
-    -- Ensure existing frame is properly parented
-    if GBB.FramesEntries[ i ]:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame then
-      GBB.FramesEntries[ i ]:SetParent(GroupBulletinBoardFrame_ScrollChildFrame)
-    end
+  -- ALWAYS destroy and recreate to prevent overlapping
+  if GBB.FramesEntries[ i ] then
+    GBB.FramesEntries[ i ]:Hide()
+    GBB.FramesEntries[ i ]:ClearAllPoints()
+    GBB.FramesEntries[ i ]:SetParent(nil)
+    GBB.FramesEntries[ i ] = nil
   end
+
+  -- Clean up any existing global frame
+  local existingFrame = _G[ItemFrameName]
+  if existingFrame then
+    existingFrame:Hide()
+    existingFrame:ClearAllPoints()
+    existingFrame:SetParent(nil)
+    _G[ItemFrameName] = nil
+    _G[ItemFrameName .. "_name"] = nil
+    _G[ItemFrameName .. "_message"] = nil
+    _G[ItemFrameName .. "_time"] = nil
+  end
+
+  -- Create fresh frame
+  GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
+    "GroupBulletinBoard_TmpRequest" )
+
+  -- Set up child frames
+  if _G[ ItemFrameName .. "_name" ] then
+    _G[ ItemFrameName .. "_name" ]:SetPoint( "TOPLEFT" )
+  end
+  if _G[ ItemFrameName .. "_time" ] then
+    _G[ ItemFrameName .. "_time" ]:SetPoint( "TOP", _G[ ItemFrameName .. "_name" ], "TOP", 0, 0 )
+  end
+
+  if _G[ ItemFrameName .. "_message" ] then
+    _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( false )
+    _G[ ItemFrameName .. "_message" ]:SetFontObject( GBB.DB.FontSize )
+  end
+  if _G[ ItemFrameName .. "_name" ] then
+    _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
+  end
+  if _G[ ItemFrameName .. "_time" ] then
+    _G[ ItemFrameName .. "_time" ]:SetFontObject( GBB.DB.FontSize )
+  end
+  if GBB.DontTrunicate then
+    GBB.ClearNeeded = true
+  end
+  GBB.Tool.EnableHyperlink( GBB.FramesEntries[ i ] )
 
   -- Set initial height to a reasonable default instead of 999
   GBB.FramesEntries[ i ]:SetHeight( 20 )
@@ -406,6 +408,11 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   GBB.FramesEntries[ i ]:SetWidth( GroupBulletinBoardFrame:GetWidth() - 40 )
   GBB.FramesEntries[ i ]:SetAlpha( 1 )
 
+  -- Ensure frame is properly parented to prevent floating
+  if GBB.FramesEntries[ i ]:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame then
+    GBB.FramesEntries[ i ]:SetParent(GroupBulletinBoardFrame_ScrollChildFrame)
+  end
+
   if req then
     GBB.FramesEntries[ i ]:Show()
   else
@@ -533,59 +540,33 @@ end
 
 local ownRequestDungeons = {}
 function GBB.UpdateList()
-  GBB.Clear()
-
-  -- Aggressive cleanup of ALL orphaned frames before updating
-  for i = 1, 1000 do
-    local frame = _G["GBB.Item_" .. i]
-    if frame then
-      -- Check if this frame is orphaned (not in FramesEntries or has wrong parent)
-      local isOrphaned = not GBB.FramesEntries[i] or frame:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame
-
-      if isOrphaned then
-        frame:Hide()
-        if frame.SetAlpha then
-          frame:SetAlpha(0)
-        end
-        frame:SetParent(nil)
-        frame:ClearAllPoints()
-        frame:SetWidth(1)
-        frame:SetHeight(1)
-
-        -- Destroy child frames
-        local nameFrame = _G["GBB.Item_" .. i .. "_name"]
-        local messageFrame = _G["GBB.Item_" .. i .. "_message"]
-        local timeFrame = _G["GBB.Item_" .. i .. "_time"]
-
-        if nameFrame then
-          nameFrame:SetText("")
-          nameFrame:SetParent(nil)
-          nameFrame:Hide()
-        end
-        if messageFrame then
-          messageFrame:SetText("")
-          messageFrame:SetParent(nil)
-          messageFrame:Hide()
-        end
-        if timeFrame then
-          timeFrame:SetText("")
-          timeFrame:SetParent(nil)
-          timeFrame:Hide()
-        end
-
-        -- Remove from global namespace
-        _G["GBB.Item_" .. i] = nil
-        _G["GBB.Item_" .. i .. "_name"] = nil
-        _G["GBB.Item_" .. i .. "_message"] = nil
-        _G["GBB.Item_" .. i .. "_time"] = nil
-
-        -- Also remove from FramesEntries if it exists there
-        if GBB.FramesEntries[i] then
-          GBB.FramesEntries[i] = nil
-        end
+  -- COMPLETE RESET: Destroy all existing frames to prevent overlapping
+  if GBB.FramesEntries then
+    for i = 1, 100 do
+      if GBB.FramesEntries[i] then
+        GBB.FramesEntries[i]:Hide()
+        GBB.FramesEntries[i]:ClearAllPoints()
+        GBB.FramesEntries[i]:SetParent(nil)
+        GBB.FramesEntries[i] = nil
       end
     end
   end
+
+  -- Clean up ALL global frames
+  for i = 1, 1000 do
+    local frame = _G["GBB.Item_" .. i]
+    if frame then
+      frame:Hide()
+      frame:ClearAllPoints()
+      frame:SetParent(nil)
+      _G["GBB.Item_" .. i] = nil
+      _G["GBB.Item_" .. i .. "_name"] = nil
+      _G["GBB.Item_" .. i .. "_message"] = nil
+      _G["GBB.Item_" .. i .. "_time"] = nil
+    end
+  end
+
+  GBB.Clear()
 
   if not GroupBulletinBoardFrame:IsVisible() then
     -- Don't return early - we still want to process requests even if frame is not visible
@@ -794,79 +775,28 @@ function GBB.UpdateList()
     end
   end
 
-  -- Simplified spacing logic - no complex calculations needed
+  -- ROBUST SPACING: Ensure proper spacing between entries
+  local totalHeight = yy + 50  -- Extra padding to prevent overlapping
 
   -- Set the scroll child frame height to accommodate all content
-  GroupBulletinBoardFrame_ScrollChildFrame:SetHeight( yy + 20 )
+  GroupBulletinBoardFrame_ScrollChildFrame:SetHeight( totalHeight )
 
-  -- Update the scroll frame to ensure proper scrolling
+  -- Force multiple layout updates to prevent overlapping
   GroupBulletinBoardFrame_ScrollFrame:UpdateScrollChildRect()
+  if GroupBulletinBoardFrame_ScrollChildFrame then
+    GroupBulletinBoardFrame_ScrollChildFrame:GetParent():UpdateScrollChildRect()
+  end
+
+  -- Additional layout update after a short delay
+  C_Timer.After(0.01, function()
+    if GroupBulletinBoardFrame_ScrollFrame then
+      GroupBulletinBoardFrame_ScrollFrame:UpdateScrollChildRect()
+    end
+  end)
 
   GroupBulletinBoardFrameStatusText:SetText( string.format( GBB.L[ "msgNbRequest" ], count ) )
 
-  -- Schedule periodic cleanup to prevent accumulation
-  if not GBB.CleanupTimer then
-    GBB.CleanupTimer = C_Timer.NewTicker(10, function()
-      -- Clean up any orphaned subheaders
-      for i = 1, 1000 do
-        local frame = _G["GBB.SubHeader_" .. i]
-        if frame and not frame:IsVisible() then
-          frame:Hide()
-          frame:ClearAllPoints()
-          frame:SetParent(nil)
-        end
-      end
-      -- Clean up orphaned item frames
-      for i = 1, 100 do
-        if GBB.FramesEntries[i] and not GBB.FramesEntries[i]:IsVisible() then
-          GBB.FramesEntries[i]:SetHeight(1)
-          GBB.FramesEntries[i]:ClearAllPoints()
-        end
-      end
-      -- Aggressive cleanup for any visible orphaned frames
-      for i = 1, 1000 do
-        local frame = _G["GBB.Item_" .. i]
-        if frame and frame:IsVisible() and not GBB.FramesEntries[i] then
-          -- Completely destroy orphaned frames
-          frame:Hide()
-          if frame.SetAlpha then
-            frame:SetAlpha(0)
-          end
-          frame:SetParent(nil)
-          frame:ClearAllPoints()
-          frame:SetWidth(1)
-          frame:SetHeight(1)
-
-          -- Destroy child frames
-          local nameFrame = _G["GBB.Item_" .. i .. "_name"]
-          local messageFrame = _G["GBB.Item_" .. i .. "_message"]
-          local timeFrame = _G["GBB.Item_" .. i .. "_time"]
-
-          if nameFrame then
-            nameFrame:SetText("")
-            nameFrame:SetParent(nil)
-            nameFrame:Hide()
-          end
-          if messageFrame then
-            messageFrame:SetText("")
-            messageFrame:SetParent(nil)
-            messageFrame:Hide()
-          end
-          if timeFrame then
-            timeFrame:SetText("")
-            timeFrame:SetParent(nil)
-            timeFrame:Hide()
-          end
-
-          -- Remove from global namespace
-          _G["GBB.Item_" .. i] = nil
-          _G["GBB.Item_" .. i .. "_name"] = nil
-          _G["GBB.Item_" .. i .. "_message"] = nil
-          _G["GBB.Item_" .. i .. "_time"] = nil
-        end
-      end
-    end)
-  end
+  -- No periodic cleanup needed - we do complete resets every time
 end
 
 local nonLfgHyperlinks = {
