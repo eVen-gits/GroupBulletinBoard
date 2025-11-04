@@ -167,7 +167,7 @@ function GBB.FilterDungeon( dungeon, isHeroic, isRaid )
   if isRaid == nil then isRaid = false end
 
   -- If the user is within the level range, or if they're max level and it's heroic.
-  local inLevelRange = (not isHeroic and GBB.dungeonLevel[ dungeon ][ 1 ] <= GBB.UserLevel and GBB.UserLevel <= GBB.dungeonLevel[ dungeon ][ 2 ]) or
+  local inLevelRange = (not isHeroic and GBB.dungeonLevel[ dungeon ] and GBB.dungeonLevel[ dungeon ][ 1 ] <= GBB.UserLevel and GBB.UserLevel <= GBB.dungeonLevel[ dungeon ][ 2 ]) or
       (isHeroic and GBB.UserLevel == 70)
 
   local filterDungeonResult = (GBB.DBChar["FilterDungeon" .. dungeon] ~= false)
@@ -252,7 +252,9 @@ end
 
 function GBB.ResetUI()
   -- Force a complete UI reset by clearing everything and rebuilding
-  print("GBB: Starting UI reset...")
+  if GBB.DB and GBB.DB.OnDebug then
+    print("GBB: Starting UI reset...")
+  end
 
   -- Reset column widths to force recalculation
   if GBB.DB then
@@ -345,7 +347,9 @@ function GBB.ResetUI()
       GroupBulletinBoardFrame_ScrollFrame:UpdateScrollChildRect()
     end
 
-    print("GBB: UI reset complete - all frames destroyed and rebuilt")
+    if GBB.DB and GBB.DB.OnDebug then
+      print("GBB: UI reset complete - all frames destroyed and rebuilt")
+    end
   end)
 end
 
@@ -705,7 +709,9 @@ function GBB.Init()
         GBB.DBChar.channel[1] = true  -- General
         GBB.DBChar.channel[2] = true  -- Trade
         GBB.DBChar.channel[4] = true  -- LookingForGroup
-        print("GBB: Channel settings reset to default")
+        if GBB.DB and GBB.DB.OnDebug then
+          print("GBB: Channel settings reset to default")
+        end
       end
     end },
     { "notify", "", {
@@ -846,6 +852,50 @@ local function Event_CHAT_MSG_SYSTEM( arg1 )
   if name and level then
     level = tonumber( level ) or 0
     GBB.RealLevel[ name ] = level
+
+    -- Extract class from the who message (format: "[Name]: Level X Race Class <Guild> - Location")
+    -- Try to find a known class name in the message
+    local classNames = {
+      "Warrior", "Paladin", "Hunter", "Rogue", "Priest",
+      "Death Knight", "Shaman", "Mage", "Warlock", "Druid"
+    }
+    local classFileName = nil
+    local classMatch = nil
+
+    -- Try each class name (case insensitive)
+    local arg1Lower = string.lower(arg1)
+    for _, className in ipairs(classNames) do
+      -- Match class name before < or before - (case insensitive)
+      -- Replace spaces in class name with %s+ pattern to handle "Death Knight" properly
+      local classNameLower = string.lower(className)
+      local pattern = string.gsub(classNameLower, " ", "%%s+") .. "%s*[<%-]"
+      if string.match(arg1Lower, pattern) then
+        classMatch = className
+        break
+      end
+    end
+
+    if classMatch then
+      -- Convert class name to class file name
+      local classUpper = string.upper(string.gsub(classMatch, "%s+", ""))  -- Remove spaces
+      local classMap = {
+        ["WARRIOR"] = "WARRIOR", ["PALADIN"] = "PALADIN", ["HUNTER"] = "HUNTER",
+        ["ROGUE"] = "ROGUE", ["PRIEST"] = "PRIEST", ["DEATHKNIGHT"] = "DEATHKNIGHT",
+        ["SHAMAN"] = "SHAMAN", ["MAGE"] = "MAGE", ["WARLOCK"] = "WARLOCK", ["DRUID"] = "DRUID"
+      }
+      classFileName = classMap[classUpper]
+
+      if classFileName then
+        -- Update class for ALL entries for this player
+        for i, req in pairs(GBB.RequestList) do
+          if type(req) == "table" and req.name == name then
+            req.class = classFileName
+          end
+        end
+        -- Force update display
+        GBB.UpdateList()
+      end
+    end
   else
     d, name = string.match( arg1, GBB.PatternOnline )
   end
@@ -919,30 +969,64 @@ local function Event_WHO_LIST_UPDATE()
 
   -- Update class and level information for requests
   local updated = false
-  for i, req in ipairs(GBB.RequestList) do
-    if req and req.name then
-      -- Get who list results
-      local numWhos = GetNumWhoResults()
+  local numWhos = GetNumWhoResults()
 
-      for j = 1, numWhos do
-        local name, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+  -- First, collect all who data by player name
+  local whoDataByPlayer = {}
+  for j = 1, numWhos do
+    local name, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
 
-        if name == req.name then
-          -- Only update if we don't already have this information or if it's different
-          local shouldUpdate = false
-          if not req.class or req.class ~= classFileName then
-            req.class = classFileName
+    if name then
+      -- Extract class
+      local newClass = nil
+      if classFileName and classFileName ~= "" and classFileName ~= "UNKNOWN" then
+        newClass = classFileName
+      elseif class and class ~= "" and class ~= "Unknown" then
+        local classUpper = string.upper(string.gsub(class, "%s+", ""))
+        local classMap = {
+          ["WARRIOR"] = "WARRIOR", ["PALADIN"] = "PALADIN", ["HUNTER"] = "HUNTER",
+          ["ROGUE"] = "ROGUE", ["PRIEST"] = "PRIEST", ["DEATHKNIGHT"] = "DEATHKNIGHT",
+          ["SHAMAN"] = "SHAMAN", ["MAGE"] = "MAGE", ["WARLOCK"] = "WARLOCK", ["DRUID"] = "DRUID"
+        }
+        newClass = classMap[classUpper] or classUpper
+      end
+
+      whoDataByPlayer[name] = {
+        level = level,
+        class = newClass,
+        classFileName = classFileName,
+        classString = class
+      }
+    end
+  end
+
+  -- Now update ALL entries for each player found in who results
+  -- Use pairs instead of ipairs to ensure we get all entries
+  for i, req in pairs(GBB.RequestList) do
+    if type(req) == "table" and req.name then
+      local whoData = whoDataByPlayer[req.name]
+      if whoData then
+        local shouldUpdate = false
+        local newClass = whoData.class
+
+        -- Always update class if we have new data
+        if newClass and newClass ~= "" then
+          local currentClass = req.class or ""
+          -- Always update if different or if not set
+          if currentClass ~= newClass then
+            req.class = newClass
             shouldUpdate = true
           end
-          if level and level > 0 and (not GBB.RealLevel[req.name] or GBB.RealLevel[req.name] ~= level) then
-            GBB.RealLevel[req.name] = level
-            shouldUpdate = true
-          end
+        end
 
-          if shouldUpdate then
-            updated = true
-          end
-          break
+        -- Update level
+        if whoData.level and whoData.level > 0 and (not GBB.RealLevel[req.name] or GBB.RealLevel[req.name] ~= whoData.level) then
+          GBB.RealLevel[req.name] = whoData.level
+          shouldUpdate = true
+        end
+
+        if shouldUpdate then
+          updated = true
         end
       end
     end

@@ -86,7 +86,7 @@ local function CreateHeader( yy, dungeon )
   end
 
   local colTXT
-  if GBB.DB.ColorOnLevel then
+  if GBB.DB.ColorOnLevel and GBB.dungeonLevel[ dungeon ] then
     if GBB.dungeonLevel[ dungeon ][ 1 ] == 0 then
       colTXT = "|r"
     elseif GBB.dungeonLevel[ dungeon ][ 2 ] < GBB.UserLevel then
@@ -154,7 +154,7 @@ end
 local function CreateItem( yy, i, doCompact, req, forceHight )
   local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
   local AnchorRight = "GroupBulletinBoardFrame_ScrollChildFrame"
-  local ItemFrameName = "GBB.Item_" .. i
+  local ItemFrameName = "GBB.Item_" .. i .. "_" .. GetTime()
 
   -- ALWAYS destroy and recreate to prevent overlapping
   if GBB.FramesEntries[ i ] then
@@ -164,7 +164,7 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
     GBB.FramesEntries[ i ] = nil
   end
 
-  -- Clean up any existing global frame
+  -- Clean up any existing global frame with this name
   local existingFrame = _G[ItemFrameName]
   if existingFrame then
     existingFrame:Hide()
@@ -174,6 +174,19 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
     _G[ItemFrameName .. "_name"] = nil
     _G[ItemFrameName .. "_message"] = nil
     _G[ItemFrameName .. "_time"] = nil
+  end
+
+  -- Additional cleanup: remove any frames that might have the old naming pattern
+  local oldFrameName = "GBB.Item_" .. i
+  local oldFrame = _G[oldFrameName]
+  if oldFrame then
+    oldFrame:Hide()
+    oldFrame:ClearAllPoints()
+    oldFrame:SetParent(nil)
+    _G[oldFrameName] = nil
+    _G[oldFrameName .. "_name"] = nil
+    _G[oldFrameName .. "_message"] = nil
+    _G[oldFrameName .. "_time"] = nil
   end
 
   -- Create fresh frame
@@ -189,8 +202,9 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   end
 
   if _G[ ItemFrameName .. "_message" ] then
-    _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( false )
+    _G[ ItemFrameName .. "_message" ]:SetNonSpaceWrap( true )
     _G[ ItemFrameName .. "_message" ]:SetFontObject( GBB.DB.FontSize )
+    -- Word wrapping is enabled to show full messages across multiple lines
   end
   if _G[ ItemFrameName .. "_name" ] then
     _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
@@ -359,6 +373,17 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
       _G[ ItemFrameName .. "_time" ]:SetPoint( "RIGHT", GBB.FramesEntries[ i ], "RIGHT", -10, 0 )
     end
   end
+
+  -- Set message frame width BEFORE calculating height so wrapping works correctly
+  if _G[ ItemFrameName .. "_message" ] then
+    local frameWidth = GroupBulletinBoardFrame:GetWidth() - 40
+    if doCompact >= 1 then
+      -- In compact mode, account for name and time columns
+      frameWidth = frameWidth - 150
+    end
+    _G[ ItemFrameName .. "_message" ]:SetWidth( frameWidth )
+  end
+
   local h
   if GBB.DB.ChatStyle then
     if _G[ ItemFrameName .. "_message" ] then
@@ -382,9 +407,15 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
         h = 16
       end
     else
+      -- In compact mode, include both name and message height for wrapped messages
+      h = 0
       if _G[ ItemFrameName .. "_name" ] then
-        h = _G[ ItemFrameName .. "_name" ]:GetStringHeight()
-      else
+        h = h + _G[ ItemFrameName .. "_name" ]:GetStringHeight()
+      end
+      if _G[ ItemFrameName .. "_message" ] and req and req.message then
+        h = h + _G[ ItemFrameName .. "_message" ]:GetStringHeight()
+      end
+      if h == 0 then
         h = 16
       end
     end
@@ -400,7 +431,7 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   -- Indent entries slightly to the right for visual clarity
   GBB.FramesEntries[ i ]:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
   if _G[ ItemFrameName .. "_message" ] then
-    _G[ ItemFrameName .. "_message" ]:SetHeight( h + 10 )
+    _G[ ItemFrameName .. "_message" ]:SetHeight( h )
   end
   GBB.FramesEntries[ i ]:SetHeight( h )
 
@@ -423,80 +454,99 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
 end
 
 function GBB.WhoRequest( name )
+  -- Check if we already have class data for this player
+  local hasClassData = false
+  for i, req in pairs(GBB.RequestList) do
+    if type(req) == "table" and req.name == name and req.class and req.class ~= "" then
+      hasClassData = true
+      break
+    end
+  end
+
+  -- Also check if we have level data (though we might still want to refresh it)
+  local hasLevelData = GBB.RealLevel[name] and GBB.RealLevel[name] > 0
+
+  -- If we already have both class and level, skip the lookup
+  if hasClassData and hasLevelData then
+    return  -- Already have all the data we need
+  end
+
   -- Store the name we're looking for
   GBB.PendingWhoRequest = name
 
-  GBB.Tool.RunSlashCmd( "/who " .. name )
+  -- Use SendWho API instead of slash command to avoid chat spam
+  if SendWho then
+    SendWho( name )
+  else
+    -- Fallback to slash command if SendWho doesn't exist
+    GBB.Tool.RunSlashCmd( "/who " .. name )
+  end
 
-  -- Schedule an update after /who to refresh level/class info
-  -- Use a simple approach for Classic/Wrath compatibility
-  GBB.WhoUpdateTimer = time() + 2
-
-  -- Try multiple times to get the who results with better timing
+  -- Directly check results after a short delay (more reliable than waiting for event)
+  -- This is faster and ensures we get the data even if event doesn't fire
   local attempts = 0
-  local maxAttempts = 5
+  local maxAttempts = 2  -- Reduced attempts for speed
 
   local function checkWhoResults()
     attempts = attempts + 1
-
     local numWhos = GetNumWhoResults()
-    local found = false
 
-    for j = 1, numWhos do
-      local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+    if numWhos > 0 then
+      for j = 1, numWhos do
+        local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
 
-      if whoName == name then
-        -- Update all requests for this player across all dungeons
-        for i, req in ipairs(GBB.RequestList) do
-          if req and req.name == name then
-            req.class = classFileName
-            if level and level > 0 then
-              GBB.RealLevel[req.name] = level
-            end
-            found = true
+        if whoName and whoName == name then
+          -- Extract class once
+          local newClass = nil
+          if classFileName and classFileName ~= "" and classFileName ~= "UNKNOWN" then
+            newClass = classFileName
+          elseif class and class ~= "" and class ~= "Unknown" then
+            -- Convert class name to file name format
+            local classUpper = string.upper(string.gsub(class, "%s+", ""))
+            local classMap = {
+              ["WARRIOR"] = "WARRIOR", ["PALADIN"] = "PALADIN", ["HUNTER"] = "HUNTER",
+              ["ROGUE"] = "ROGUE", ["PRIEST"] = "PRIEST", ["DEATHKNIGHT"] = "DEATHKNIGHT",
+              ["SHAMAN"] = "SHAMAN", ["MAGE"] = "MAGE", ["WARLOCK"] = "WARLOCK", ["DRUID"] = "DRUID"
+            }
+            newClass = classMap[classUpper] or classUpper
           end
+
+          -- Update all requests for this player (use pairs to ensure we get all entries)
+          local updated = false
+
+          for i, req in pairs(GBB.RequestList) do
+            if type(req) == "table" and req.name == name then
+              -- Always update class if we have new data (force update)
+              if newClass and newClass ~= "" then
+                req.class = newClass
+                updated = true
+              end
+
+              -- Update level (shared across all entries for this name)
+              if level and level > 0 then
+                GBB.RealLevel[req.name] = level
+                updated = true
+              end
+            end
+          end
+
+          -- Force update display to ensure all entries show the new class
+          if updated then
+            GBB.UpdateList()
+          end
+          return -- Found and processed, exit
         end
-        GBB.UpdateList()
-        break
       end
     end
 
     -- If we didn't find the player and haven't exceeded max attempts, try again
-    if not found and attempts < maxAttempts then
-      C_Timer.After(0.3, checkWhoResults)
+    if attempts < maxAttempts then
+      C_Timer.After(0.2, checkWhoResults)  -- Reduced delay for speed
     end
   end
 
-  -- Start checking after a short delay
-  C_Timer.After(0.3, checkWhoResults)
-
-  -- Fallback: Force update after 2 seconds even if who didn't work
-  C_Timer.After(2, function()
-    GBB.UpdateList()
-  end)
-
-  -- Additional fallback: Try again after 4 seconds
-  C_Timer.After(4, function()
-    GBB.Tool.RunSlashCmd( "/who " .. name )
-    C_Timer.After(1, function()
-      local numWhos = GetNumWhoResults()
-      for j = 1, numWhos do
-        local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
-        if whoName == name then
-          for i, req in ipairs(GBB.RequestList) do
-            if req and req.name == name then
-              req.class = classFileName
-              if level and level > 0 then
-                GBB.RealLevel[req.name] = level
-              end
-            end
-          end
-          GBB.UpdateList()
-          break
-        end
-      end
-    end)
-  end)
+  -- Start checking after a very short delay
+  C_Timer.After(0.1, checkWhoResults)  -- Faster initial check
 end
 
 local function WhisperRequest( name )
@@ -677,12 +727,24 @@ function GBB.UpdateList()
         local isLFM = false
         if req.message then
           local msg = string.lower(req.message)
-          -- Look for LFG indicators (looking for group)
-          if string.find(msg, "lfg") or string.find(msg, "looking for group") or string.find(msg, "need group") then
-            isLFG = true
-          -- Look for LFM indicators (looking for members)
-          elseif string.find(msg, "lfm") or string.find(msg, "looking for members") or string.find(msg, "need members") or string.find(msg, "need dps") or string.find(msg, "need healer") or string.find(msg, "need tank") then
+          -- Look for LFM indicators first (looking for members) - more specific
+          if string.find(msg, "lfm") or
+             string.find(msg, "looking for members") or
+             string.find(msg, "looking for more") or
+             string.find(msg, "need members") or
+             string.find(msg, "need dps") or
+             string.find(msg, "need healer") or
+             string.find(msg, "need tank") or
+             string.find(msg, "need %d+") or
+             string.find(msg, "looking for %d+") then
             isLFM = true
+          -- Look for LFG indicators (looking for group)
+          elseif string.find(msg, "lfg") or
+                 string.find(msg, "looking for group") or
+                 string.find(msg, "need group") or
+                 string.find(msg, "need invite") or
+                 string.find(msg, "want to join") then
+            isLFG = true
           else
             -- Default to LFG if no clear indicator
             isLFG = true
@@ -705,6 +767,9 @@ function GBB.UpdateList()
     end
   end
 
+  -- Track which dungeons are being shown (have entries)
+  local shownDungeons = {}
+
   -- Now process each dungeon in order
   for dungeonIndex = 1, GBB.TBCMAXDUNGEON do
     local dungeon = GBB.dungeonSort[ dungeonIndex ]
@@ -715,6 +780,8 @@ function GBB.UpdateList()
 
       -- Only show dungeon if it has requests
       if hasLFG or hasLFM then
+        -- Mark this dungeon as shown
+        shownDungeons[ dungeon ] = true
         -- Create header for this dungeon
         yy = CreateHeader( yy, dungeon )
         cEntrys = 0
@@ -726,12 +793,13 @@ function GBB.UpdateList()
           if hasLFG then
             -- Render LFG entries directly (no subheader for compact view)
             for _, entryData in ipairs( dungeonData.lfg ) do
-              local req = entryData.req
               local i = entryData.index
+              -- Get the current req from GBB.RequestList to ensure we have the latest data
+              local req = GBB.RequestList[i]
 
               if not GBB.DB.EnableShowOnly or cEntrys < GBB.DB.ShowOnlyNb then
                 local itemHeight = CreateItem( yy, i, doCompact, req, itemHight )
-                yy = yy + itemHeight + 3
+                yy = yy + itemHeight + 1
                 cEntrys = cEntrys + 1
               else
                 if GBB.FramesEntries[i] then
@@ -744,12 +812,13 @@ function GBB.UpdateList()
           -- Process LFM entries (no subheader for compact view)
           if hasLFM then
             for _, entryData in ipairs( dungeonData.lfm ) do
-              local req = entryData.req
               local i = entryData.index
+              -- Get the current req from GBB.RequestList to ensure we have the latest data
+              local req = GBB.RequestList[i]
 
               if not GBB.DB.EnableShowOnly or cEntrys < GBB.DB.ShowOnlyNb then
                 local itemHeight = CreateItem( yy, i, doCompact, req, itemHight )
-                yy = yy + itemHeight + 3
+                yy = yy + itemHeight + 1
                 cEntrys = cEntrys + 1
               else
                 if GBB.FramesEntries[i] then
@@ -771,6 +840,18 @@ function GBB.UpdateList()
             end
           end
         end
+      end
+    end
+  end
+
+  -- Hide all dungeon headers that don't have entries
+  for dungeonIndex = 1, GBB.TBCMAXDUNGEON do
+    local dungeon = GBB.dungeonSort[ dungeonIndex ]
+    if dungeon and GBB.FramesEntries[ dungeon ] then
+      -- If this dungeon wasn't shown (no entries), hide its header
+      if not shownDungeons[ dungeon ] then
+        GBB.FramesEntries[ dungeon ]:Hide()
+        GBB.FramesEntries[ dungeon ]:ClearAllPoints()
       end
     end
   end
@@ -889,7 +970,7 @@ function GBB.GetDungeons( msg, name )
       nameLevel = GBB.RealLevel[ name ]
     else
       for dungeon, id in pairs( dungeons ) do
-        if GBB.dungeonLevel[ dungeon ][ 1 ] > 0 and nameLevel < GBB.dungeonLevel[ dungeon ][ 1 ] then
+        if GBB.dungeonLevel[ dungeon ] and GBB.dungeonLevel[ dungeon ][ 1 ] > 0 and nameLevel < GBB.dungeonLevel[ dungeon ][ 1 ] then
           nameLevel = GBB.dungeonLevel[ dungeon ][ 1 ]
         end
       end
@@ -1032,7 +1113,15 @@ function GBB.ParseLFGMessage( msg, name, channel )
                   index = #GBB.RequestList + 1
                   GBB.RequestList[ index ] = {}
                   GBB.RequestList[ index ].name = name
-                  GBB.RequestList[ index ].class = nil
+                  -- Try to preserve class from existing entries for this player
+                  local existingClass = nil
+                  for ir, existingReq in pairs(GBB.RequestList) do
+                    if type(existingReq) == "table" and existingReq.name == name and existingReq.class then
+                      existingClass = existingReq.class
+                      break
+                    end
+                  end
+                  GBB.RequestList[ index ].class = existingClass
                   GBB.RequestList[ index ].start = requestTime
                   GBB.RequestList[ index ].dungeon = dungeon
                   GBB.RequestList[ index ].IsGuildMember = false
@@ -1114,7 +1203,15 @@ function GBB.ParseLFGMessage( msg, name, channel )
                 index = #GBB.RequestList + 1
                 GBB.RequestList[ index ] = {}
                 GBB.RequestList[ index ].name = name
-                GBB.RequestList[ index ].class = nil
+                -- Try to preserve class from existing entries for this player
+                local existingClass = nil
+                for ir, existingReq in pairs(GBB.RequestList) do
+                  if type(existingReq) == "table" and existingReq.name == name and existingReq.class then
+                    existingClass = existingReq.class
+                    break
+                  end
+                end
+                GBB.RequestList[ index ].class = existingClass
                 GBB.RequestList[ index ].start = requestTime
                 GBB.RequestList[ index ].dungeon = dungeon
                 GBB.RequestList[ index ].IsGuildMember = false
@@ -1305,7 +1402,15 @@ function GBB.ParseMessage( msg, name, channel )
           index = #GBB.RequestList + 1
           GBB.RequestList[ index ] = {}
           GBB.RequestList[ index ].name = name
-          GBB.RequestList[ index ].class = nil -- I don't like doing this, but wth...
+          -- Try to preserve class from existing entries for this player
+          local existingClass = nil
+          for ir, existingReq in pairs(GBB.RequestList) do
+            if type(existingReq) == "table" and existingReq.name == name and existingReq.class then
+              existingClass = existingReq.class
+              break
+            end
+          end
+          GBB.RequestList[ index ].class = existingClass
           GBB.RequestList[ index ].start = requestTime
           GBB.RequestList[ index ].dungeon = dungeon
           GBB.RequestList[ index ].IsGuildMember = false --IsInGuild() and IsGuildMember( guid )
@@ -1387,7 +1492,15 @@ function GBB.ParseMessage( msg, name, channel )
     local index = #GBB.RequestList + 1
     GBB.RequestList[ index ] = {}
     GBB.RequestList[ index ].name = name
-    GBB.RequestList[ index ].class = nil
+    -- Try to preserve class from existing entries for this player
+    local existingClass = nil
+    for ir, existingReq in pairs(GBB.RequestList) do
+      if type(existingReq) == "table" and existingReq.name == name and existingReq.class then
+        existingClass = existingReq.class
+        break
+      end
+    end
+    GBB.RequestList[ index ].class = existingClass
     GBB.RequestList[ index ].start = requestTime
     if isBad then
       GBB.RequestList[ index ].dungeon = "BAD"
@@ -1483,7 +1596,7 @@ function GBB.ClickDungeon( self, button )
 end
 
 function GBB.ClickRequest( self, button )
-  local id = string.match( self:GetName(), "GBB.Item_(.+)" )
+  local id = string.match( self:GetName(), "GBB.Item_(%d+)_" )
   if id == nil or id == 0 then return end
 
   local req = GBB.RequestList[ tonumber( id ) ]
@@ -1502,7 +1615,7 @@ function GBB.ClickRequest( self, button )
 end
 
 function GBB.RequestShowTooltip( self )
-  for id in string.gmatch( self:GetName(), "GBB.Item_(.+)" ) do
+  for id in string.gmatch( self:GetName(), "GBB.Item_(%d+)_" ) do
     local n = _G[ self:GetName() .. "_message" ]
     local req = GBB.RequestList[ tonumber( id ) ]
     if not req then return end
@@ -1569,9 +1682,14 @@ function GBB.RefreshDungeonPlayers( dungeon )
   local delay = 0
   for _, name in ipairs( names ) do
     C_Timer.After( delay, function()
+      -- Use WhoRequest which now uses SendWho API to avoid chat spam
       if GBB.WhoRequest then
         GBB.WhoRequest( name )
+      elseif SendWho then
+        -- Direct fallback if WhoRequest doesn't exist
+        SendWho( name )
       else
+        -- Last resort fallback (shouldn't happen in Classic/Wrath)
         GBB.Tool.RunSlashCmd( "/who " .. name )
       end
     end )

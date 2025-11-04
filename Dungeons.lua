@@ -49,7 +49,6 @@ function GBB.GetDungeonNames()
     [ "BWL" ] = "Blackwing Lair (25)",
     [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
     [ "NAXX" ] = "Naxxramas (25)",
-    [ "WSG" ] = "Warsong Gulch (PvP)",
     [ "AB" ] = "Arathi Basin (PvP)",
     [ "AV" ] = "Alterac Valley (PvP)",
     [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -99,7 +98,6 @@ function GBB.GetDungeonNames()
       [ "BWL" ] = "Blackwing Lair (25)",
       [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
       [ "NAXX" ] = "Naxxramas (25)",
-      [ "WSG" ] = "Warsong Gulch (PvP)",
       [ "AB" ] = "Arathi Basin (PvP)",
       [ "AV" ] = "Alterac Valley (PvP)",
       [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -148,7 +146,6 @@ function GBB.GetDungeonNames()
       [ "BWL" ] = "Blackwing Lair (25)",
       [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
       [ "NAXX" ] = "Naxxramas (25)",
-      [ "WSG" ] = "Warsong Gulch (PvP)",
       [ "AB" ] = "Arathi Basin (PvP)",
       [ "AV" ] = "Alterac Valley (PvP)",
       [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -196,7 +193,6 @@ function GBB.GetDungeonNames()
       [ "BWL" ] = "Blackwing Lair (25)",
       [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
       [ "NAXX" ] = "Naxxramas (25)",
-      [ "WSG" ] = "Warsong Gulch (PvP)",
       [ "AB" ] = "Arathi Basin (PvP)",
       [ "AV" ] = "Alterac Valley (PvP)",
       [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -245,7 +241,6 @@ function GBB.GetDungeonNames()
       [ "BWL" ] = "Blackwing Lair (25)",
       [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
       [ "NAXX" ] = "Naxxramas (25)",
-      [ "WSG" ] = "Warsong Gulch (PvP)",
       [ "AB" ] = "Arathi Basin (PvP)",
       [ "AV" ] = "Alterac Valley (PvP)",
       [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -293,7 +288,6 @@ function GBB.GetDungeonNames()
       [ "BWL" ] = "Blackwing Lair (25)",
       [ "AQ25" ] = "Temple of Ahn'Qiraj (25)",
       [ "NAXX" ] = "Naxxramas (25)",
-      [ "WSG" ] = "Warsong Gulch (PvP)",
       [ "AB" ] = "Arathi Basin (PvP)",
       [ "AV" ] = "Alterac Valley (PvP)",
       [ "GI" ] = "Gillijim's Isle (PvP)",
@@ -374,7 +368,6 @@ GBB.VanillaDungeonLevels = {
   [ "BWL" ] = { 60, 60 },
   [ "AQ25" ] = { 60, 60 },
   [ "NAXX" ] = { 60, 60 },
-  [ "WSG" ] = { 10, 70 },
   [ "AB" ] = { 20, 70 },
   [ "AV" ] = { 51, 70 },
   [ "MISC" ] = { 0, 100 },
@@ -400,7 +393,7 @@ GBB.VanillDungeonNames   = {
 
 
 GBB.PvpNames = {
-  "WSG", "AB", "AV", "GI", "ARENA",
+  "AB", "AV", "GI", "ARENA",
 }
 
 GBB.Misc = { "MISC", "TRADE", }
@@ -411,7 +404,7 @@ GBB.DebugNames = {
 
 GBB.Raids = {
   "ONY", "MC", "UDLUM", "ZG", "AQ10", "BWL", "AQ25", "NAXX",
-  "ARENA", "WSG", "AV", "AB", "GI",
+  "ARENA", "AV", "AB", "GI",
   "BREW", "HOLLOW",
 }
 
