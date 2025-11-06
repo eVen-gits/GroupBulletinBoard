@@ -286,7 +286,8 @@ function GBB.ResetUI()
     GBB.SubHeaders = {}
   end
 
-  -- Clean up ALL global frames
+  -- Clean up ALL global frames (including those with timestamps)
+  -- First, try the old pattern
   for i = 1, 1000 do
     local frame = _G["GBB.Item_" .. i]
     if frame then
@@ -303,6 +304,29 @@ function GBB.ResetUI()
       _G["GBB.Item_" .. i .. "_name"] = nil
       _G["GBB.Item_" .. i .. "_message"] = nil
       _G["GBB.Item_" .. i .. "_time"] = nil
+    end
+  end
+
+  -- Also clean up frames with timestamp pattern by iterating through ScrollChildFrame children
+  -- Use GetChildren() which returns varargs in older WoW versions
+  if GroupBulletinBoardFrame_ScrollChildFrame then
+    local children = { GroupBulletinBoardFrame_ScrollChildFrame:GetChildren() }
+    -- Iterate backwards to avoid issues when removing frames
+    for i = #children, 1, -1 do
+      local child = children[i]
+      if child and child.GetName then
+        local name = child:GetName()
+        if name and string.match(name, "^GBB%.Item_%d+_") then
+          -- This is one of our entry frames with timestamp
+          child:Hide()
+          child:ClearAllPoints()
+          child:SetParent(nil)
+          _G[name] = nil
+          if _G[name .. "_name"] then _G[name .. "_name"]:Hide() _G[name .. "_name"] = nil end
+          if _G[name .. "_message"] then _G[name .. "_message"]:Hide() _G[name .. "_message"] = nil end
+          if _G[name .. "_time"] then _G[name .. "_time"]:Hide() _G[name .. "_time"] = nil end
+        end
+      end
     end
   end
 

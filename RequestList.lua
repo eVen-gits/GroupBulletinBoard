@@ -83,6 +83,34 @@ local function CreateHeader( yy, dungeon )
     _G[ ItemFrameName .. "_name" ]:SetHeight( h )
     _G[ ItemFrameName ]:SetHeight( h + 5 )
     _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
+  else
+    -- Frame exists, but ensure child frames still exist and are properly set up
+    -- If child frames are missing, we need to recreate them
+    if not _G[ ItemFrameName .. "_name" ] then
+      -- Child frame was destroyed, recreate the parent frame
+      GBB.FramesEntries[ dungeon ]:Hide()
+      GBB.FramesEntries[ dungeon ]:ClearAllPoints()
+      GBB.FramesEntries[ dungeon ]:SetParent(nil)
+      GBB.FramesEntries[ dungeon ] = nil
+      _G[ ItemFrameName ] = nil
+      -- Recreate the frame
+      GBB.FramesEntries[ dungeon ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
+        "GroupBulletinBoard_TmpHeader" )
+      GBB.FramesEntries[ dungeon ]:SetPoint( "RIGHT", _G[ AnchorRight ], "RIGHT", 0, 0 )
+      _G[ ItemFrameName .. "_name" ]:SetPoint( "RIGHT", GBB.FramesEntries[ dungeon ], "RIGHT", 0, 0 )
+      local fname, h = _G[ ItemFrameName .. "_name" ]:GetFont()
+      _G[ ItemFrameName .. "_name" ]:SetHeight( h )
+      _G[ ItemFrameName ]:SetHeight( h + 5 )
+      _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
+    else
+      -- Child frame exists, just ensure parent frame is properly set up
+      -- Make sure parent is still correct
+      if GBB.FramesEntries[ dungeon ]:GetParent() ~= GroupBulletinBoardFrame_ScrollChildFrame then
+        GBB.FramesEntries[ dungeon ]:SetParent( GroupBulletinBoardFrame_ScrollChildFrame )
+      end
+      GBB.FramesEntries[ dungeon ]:SetPoint( "RIGHT", _G[ AnchorRight ], "RIGHT", 0, 0 )
+      _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
+    end
   end
 
   local colTXT
@@ -591,18 +619,32 @@ end
 local ownRequestDungeons = {}
 function GBB.UpdateList()
   -- COMPLETE RESET: Destroy all existing frames to prevent overlapping
+  -- First, hide and clear all frames in FramesEntries
   if GBB.FramesEntries then
     for i = 1, 100 do
       if GBB.FramesEntries[i] then
-        GBB.FramesEntries[i]:Hide()
-        GBB.FramesEntries[i]:ClearAllPoints()
-        GBB.FramesEntries[i]:SetParent(nil)
+        local frame = GBB.FramesEntries[i]
+        if frame and frame.GetName then
+          local frameName = frame:GetName()
+          -- Hide the frame and all its children
+          frame:Hide()
+          frame:ClearAllPoints()
+          frame:SetParent(nil)
+          -- Clean up child frames by name
+          if frameName then
+            if _G[frameName .. "_name"] then _G[frameName .. "_name"]:Hide() _G[frameName .. "_name"] = nil end
+            if _G[frameName .. "_message"] then _G[frameName .. "_message"]:Hide() _G[frameName .. "_message"] = nil end
+            if _G[frameName .. "_time"] then _G[frameName .. "_time"]:Hide() _G[frameName .. "_time"] = nil end
+            _G[frameName] = nil
+          end
+        end
         GBB.FramesEntries[i] = nil
       end
     end
   end
 
-  -- Clean up ALL global frames
+  -- Clean up ALL global frames (including those with timestamps)
+  -- First, try the old pattern
   for i = 1, 1000 do
     local frame = _G["GBB.Item_" .. i]
     if frame then
@@ -613,6 +655,29 @@ function GBB.UpdateList()
       _G["GBB.Item_" .. i .. "_name"] = nil
       _G["GBB.Item_" .. i .. "_message"] = nil
       _G["GBB.Item_" .. i .. "_time"] = nil
+    end
+  end
+
+  -- Also clean up frames with timestamp pattern by iterating through ScrollChildFrame children
+  -- Use GetChildren() which returns varargs in older WoW versions
+  if GroupBulletinBoardFrame_ScrollChildFrame then
+    local children = { GroupBulletinBoardFrame_ScrollChildFrame:GetChildren() }
+    -- Iterate backwards to avoid issues when removing frames
+    for i = #children, 1, -1 do
+      local child = children[i]
+      if child and child.GetName then
+        local name = child:GetName()
+        if name and string.match(name, "^GBB%.Item_%d+_") then
+          -- This is one of our entry frames with timestamp
+          child:Hide()
+          child:ClearAllPoints()
+          child:SetParent(nil)
+          _G[name] = nil
+          if _G[name .. "_name"] then _G[name .. "_name"]:Hide() _G[name .. "_name"] = nil end
+          if _G[name .. "_message"] then _G[name .. "_message"]:Hide() _G[name .. "_message"] = nil end
+          if _G[name .. "_time"] then _G[name .. "_time"]:Hide() _G[name .. "_time"] = nil end
+        end
+      end
     end
   end
 
@@ -1063,8 +1128,13 @@ end
 
 -- LFG addon integration
 function GBB.ParseLFGMessage( msg, name, channel )
-  -- Check if this is an LFG addon message
-  if string.sub(msg, 1, 4) == 'LFG:' then
+  -- Ignore system messages from LFG addon
+  if string.find(msg, "found:") or string.find(msg, "goingWith:") then
+    return false
+  end
+
+  -- Check if this message contains LFG: entries (not just at the start, since messages may have channel prefixes)
+  if string.find(msg, "LFG:") then
     if GBB.DB.OnDebug then
       print("GBB: Parsing LFG addon message from " .. tostring(name))
     end
@@ -1072,23 +1142,23 @@ function GBB.ParseLFGMessage( msg, name, channel )
     local requestTime = time()
     local doUpdate = false
 
-    -- Parse LFG format: "LFG:dungeoncode:role dungeoncode:role ..."
-    local lfgEx = GBB.Tool.Split(msg, ' ')
+    -- Parse LFG format: "LFG:dungeoncode:role" or "LFG:dungeoncode:role LFG:dungeoncode:role ..."
+    -- Extract all LFG: entries from the message
+    local lfgPattern = "LFG:([^%s:]+):([^%s:]+)"
+    local foundLFG = false
 
-    for _, lfg in ipairs(lfgEx) do
-      local spamSplit = GBB.Tool.Split(lfg, ':')
-      local mDungeonCode = spamSplit[2]
-      local mRole = spamSplit[3]
+    for dungeonCode, role in string.gmatch(msg, lfgPattern) do
+      foundLFG = true
 
-      if mDungeonCode and mRole then
-        local dungeonName = GBB.GetDungeonNameFromLFGCode(mDungeonCode)
+      if dungeonCode and role then
+        local dungeonName = GBB.GetDungeonNameFromLFGCode(dungeonCode)
         if dungeonName then
           -- Create a synthetic message for GBB processing
           -- The role indicates what the person is PROVIDING, so they're looking for a group
-          local syntheticMsg = "LFG " .. dungeonName .. " " .. mRole
+          local syntheticMsg = "LFG " .. dungeonName .. " " .. role
 
           if GBB.DB.OnDebug then
-            print("GBB: LFG -> " .. tostring(name) .. " providing " .. mRole .. " for " .. dungeonName)
+            print("GBB: LFG -> " .. tostring(name) .. " providing " .. role .. " for " .. dungeonName)
           end
 
           -- Process as regular GBB message
@@ -1147,11 +1217,11 @@ function GBB.ParseLFGMessage( msg, name, channel )
       GBB.UpdateList()
     end
 
-    return true -- Message was processed as LFG
+    return foundLFG -- Return true if we found any LFG entries
   end
 
-  -- Check for LFM messages (Looking for More)
-  if string.sub(msg, 1, 4) == 'LFM:' then
+  -- Check for LFM messages (Looking for More) - check anywhere in message, not just start
+  if string.find(msg, "LFM:") then
     if GBB.DB.OnDebug then
       print("GBB: Parsing LFM addon message from " .. tostring(name))
     end
@@ -1160,11 +1230,18 @@ function GBB.ParseLFGMessage( msg, name, channel )
     local doUpdate = false
 
     -- Parse LFM format: "LFM:dungeoncode:tankcount:healercount:damagecount"
-    local lfmEx = GBB.Tool.Split(msg, ':')
-    local mDungeonCode = lfmEx[2]
-    local lfmTank = tonumber(lfmEx[3]) or 0
-    local lfmHealer = tonumber(lfmEx[4]) or 0
-    local lfmDamage = tonumber(lfmEx[5]) or 0
+    -- Extract the LFM: part from the message (may have prefixes)
+    local lfmMatch = string.match(msg, "LFM:([^%s]+)")
+    if not lfmMatch then
+      return false
+    end
+
+    -- Split the LFM part by colons
+    local lfmEx = GBB.Tool.Split(lfmMatch, ':')
+    local mDungeonCode = lfmEx[1]  -- First part after LFM: is the dungeon code
+    local lfmTank = tonumber(lfmEx[2]) or 0
+    local lfmHealer = tonumber(lfmEx[3]) or 0
+    local lfmDamage = tonumber(lfmEx[4]) or 0
 
     if mDungeonCode then
       local dungeonName = GBB.GetDungeonNameFromLFGCode(mDungeonCode)
