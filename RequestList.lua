@@ -481,39 +481,89 @@ local function CreateItem( yy, i, doCompact, req, forceHight )
   return h
 end
 
+-- Normalize a class string into GBB's classFileName form (uppercase, no spaces).
+-- Whorkaround stores either the classFileName ("WARRIOR") when sourced from
+-- UnitClass, or the localized name ("Warrior", "Death Knight") when sourced
+-- from GetFriendInfo on 3.3.5a — GBB's IconClass table is keyed by file name
+-- only, so the localized variant silently fails to render without this.
+local function GBB_NormalizeClass( class )
+  if type( class ) ~= "string" or class == "" then return nil end
+  return string.upper( string.gsub( class, "%s+", "" ) )
+end
+
+-- Apply class/level to every GBB.RequestList entry for `name` and refresh the UI.
+local function GBB_ApplyPlayerInfo( name, newClass, newLevel )
+  local updated = false
+  newClass = GBB_NormalizeClass( newClass )
+  for _, req in pairs( GBB.RequestList ) do
+    if type( req ) == "table" and req.name == name then
+      if newClass then
+        req.class = newClass
+        updated = true
+      end
+      if type( newLevel ) == "number" and newLevel > 0 then
+        GBB.RealLevel[ req.name ] = newLevel
+        updated = true
+      end
+    end
+  end
+  if updated then
+    GBB.UpdateList()
+  end
+  return updated
+end
+
+local function GBB_PullFromWhorkaround( name )
+  if not _G.WhorkaroundAPI or not _G.WhorkaroundAPI.GetEntry then return false end
+  local entry = _G.WhorkaroundAPI.GetEntry( name )
+  if type( entry ) ~= "table" then return false end
+  local lvl = (type( entry.level ) == "number") and entry.level or nil
+  GBB_ApplyPlayerInfo( name, entry.class, lvl )
+  local hasClass = GBB_NormalizeClass( entry.class ) ~= nil
+  local hasLevel = lvl and lvl > 0
+  return hasClass and hasLevel
+end
+
 function GBB.WhoRequest( name )
   -- Check if we already have class data for this player
   local hasClassData = false
-  for i, req in pairs(GBB.RequestList) do
-    if type(req) == "table" and req.name == name and req.class and req.class ~= "" then
+  for _, req in pairs( GBB.RequestList ) do
+    if type( req ) == "table" and req.name == name and req.class and req.class ~= "" then
       hasClassData = true
       break
     end
   end
 
-  -- Also check if we have level data (though we might still want to refresh it)
-  local hasLevelData = GBB.RealLevel[name] and GBB.RealLevel[name] > 0
+  local hasLevelData = GBB.RealLevel[ name ] and GBB.RealLevel[ name ] > 0
 
-  -- If we already have both class and level, skip the lookup
   if hasClassData and hasLevelData then
-    return  -- Already have all the data we need
+    return
   end
 
-  -- Store the name we're looking for
-  GBB.PendingWhoRequest = name
+  -- Primary path: Whorkaround (works on servers where /who is disabled).
+  if _G.WhorkaroundAPI then
+    if GBB_PullFromWhorkaround( name ) then
+      return
+    end
+    if _G.WhorkaroundAPI.Query then
+      _G.WhorkaroundAPI.Query( name, true )  -- silent: don't print to chat
+    end
+    -- Poll the cache for the async result.
+    C_Timer.After( 0.6, function() GBB_PullFromWhorkaround( name ) end )
+    C_Timer.After( 1.8, function() GBB_PullFromWhorkaround( name ) end )
+    return
+  end
 
-  -- Use SendWho API instead of slash command to avoid chat spam
+  -- Fallback: built-in /who (only used when Whorkaround isn't installed).
+  GBB.PendingWhoRequest = name
   if SendWho then
     SendWho( name )
   else
-    -- Fallback to slash command if SendWho doesn't exist
     GBB.Tool.RunSlashCmd( "/who " .. name )
   end
 
-  -- Directly check results after a short delay (more reliable than waiting for event)
-  -- This is faster and ensures we get the data even if event doesn't fire
   local attempts = 0
-  local maxAttempts = 2  -- Reduced attempts for speed
+  local maxAttempts = 2
 
   local function checkWhoResults()
     attempts = attempts + 1
@@ -521,60 +571,34 @@ function GBB.WhoRequest( name )
 
     if numWhos > 0 then
       for j = 1, numWhos do
-        local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo(j)
+        local whoName, guild, level, race, class, zone, classFileName, area, isOnline = GetWhoInfo( j )
 
         if whoName and whoName == name then
-          -- Extract class once
           local newClass = nil
           if classFileName and classFileName ~= "" and classFileName ~= "UNKNOWN" then
             newClass = classFileName
           elseif class and class ~= "" and class ~= "Unknown" then
-            -- Convert class name to file name format
-            local classUpper = string.upper(string.gsub(class, "%s+", ""))
+            local classUpper = string.upper( string.gsub( class, "%s+", "" ) )
             local classMap = {
               ["WARRIOR"] = "WARRIOR", ["PALADIN"] = "PALADIN", ["HUNTER"] = "HUNTER",
               ["ROGUE"] = "ROGUE", ["PRIEST"] = "PRIEST", ["DEATHKNIGHT"] = "DEATHKNIGHT",
               ["SHAMAN"] = "SHAMAN", ["MAGE"] = "MAGE", ["WARLOCK"] = "WARLOCK", ["DRUID"] = "DRUID"
             }
-            newClass = classMap[classUpper] or classUpper
+            newClass = classMap[ classUpper ] or classUpper
           end
 
-          -- Update all requests for this player (use pairs to ensure we get all entries)
-          local updated = false
-
-          for i, req in pairs(GBB.RequestList) do
-            if type(req) == "table" and req.name == name then
-              -- Always update class if we have new data (force update)
-              if newClass and newClass ~= "" then
-                req.class = newClass
-                updated = true
-              end
-
-              -- Update level (shared across all entries for this name)
-              if level and level > 0 then
-                GBB.RealLevel[req.name] = level
-                updated = true
-              end
-            end
-          end
-
-          -- Force update display to ensure all entries show the new class
-          if updated then
-            GBB.UpdateList()
-          end
-          return -- Found and processed, exit
+          GBB_ApplyPlayerInfo( name, newClass, level )
+          return
         end
       end
     end
 
-    -- If we didn't find the player and haven't exceeded max attempts, try again
     if attempts < maxAttempts then
-      C_Timer.After(0.2, checkWhoResults)  -- Reduced delay for speed
+      C_Timer.After( 0.2, checkWhoResults )
     end
   end
 
-  -- Start checking after a very short delay
-  C_Timer.After(0.1, checkWhoResults)  -- Faster initial check
+  C_Timer.After( 0.1, checkWhoResults )
 end
 
 local function WhisperRequest( name )
@@ -1152,8 +1176,9 @@ function GBB.ParseLFGMessage( msg, name, channel )
 
       if dungeonCode and role then
         local dungeonName = GBB.GetDungeonNameFromLFGCode(dungeonCode)
-        if dungeonName then
-          -- Create a synthetic message for GBB processing
+        local gbbCode = GBB.GetDungeonCodeFromLFGCode(dungeonCode)
+        if dungeonName and gbbCode then
+          -- Create a synthetic message for the displayed row body.
           -- The role indicates what the person is PROVIDING, so they're looking for a group
           local syntheticMsg = "LFG " .. dungeonName .. " " .. role
 
@@ -1161,8 +1186,11 @@ function GBB.ParseLFGMessage( msg, name, channel )
             print("GBB: LFG -> " .. tostring(name) .. " providing " .. role .. " for " .. dungeonName)
           end
 
-          -- Process as regular GBB message
-          local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( syntheticMsg, name )
+          -- Route directly to the mapped GBB dungeon code, bypassing word matching
+          -- so display names containing other dungeons' keywords (e.g. "Scarlet Bastion"
+          -- containing "scarlet") don't create false-positive entries.
+          local dungeonList = { [gbbCode] = true }
+          local isHeroic = false
 
           if type( dungeonList ) == "table" and next( dungeonList ) then
             for dungeon, id in pairs( dungeonList ) do
@@ -1245,7 +1273,8 @@ function GBB.ParseLFGMessage( msg, name, channel )
 
     if mDungeonCode then
       local dungeonName = GBB.GetDungeonNameFromLFGCode(mDungeonCode)
-      if dungeonName then
+      local gbbCode = GBB.GetDungeonCodeFromLFGCode(mDungeonCode)
+      if dungeonName and gbbCode then
         -- Create synthetic message for LFM (Looking for More)
         local syntheticMsg = "LFM " .. dungeonName
         if lfmTank > 0 then
@@ -1258,8 +1287,9 @@ function GBB.ParseLFGMessage( msg, name, channel )
           syntheticMsg = syntheticMsg .. " need " .. lfmDamage .. " dps"
         end
 
-        -- Process the synthetic LFM message
-        local dungeonList, isGood, isBad, wordcount, isHeroic = GBB.GetDungeons( syntheticMsg, name )
+        -- Route directly to the mapped GBB dungeon code (see LFG branch above).
+        local dungeonList = { [gbbCode] = true }
+        local isHeroic = false
 
         if type( dungeonList ) == "table" and next( dungeonList ) then
           for dungeon, id in pairs( dungeonList ) do
@@ -1364,6 +1394,44 @@ function GBB.GetDungeonNameFromLFGCode( code )
   }
 
   return lfgToGBB[code]
+end
+
+-- Map LFG addon codes directly to GBB internal dungeon codes so ParseLFGMessage
+-- can route without going through word-matching (which produced false positives
+-- like "Scarlet Bastion" -> SM2 via the word "scarlet").
+function GBB.GetDungeonCodeFromLFGCode( code )
+  local lfgToCode = {
+    ['rfc']         = 'RFC',
+    ['wc']          = 'WC',
+    ['dm']          = 'DM',
+    ['sfk']         = 'SFK',
+    ['stocks']      = 'STOCKS',
+    ['bfd']         = 'BFD',
+    ['smgy']        = 'GY',
+    ['smlib']       = 'LIB',
+    ['gnomer']      = 'GNOMER',
+    ['rfk']         = 'RFK',
+    ['smarmory']    = 'ARMS',
+    ['smcath']      = 'CATH',
+    ['rfd']         = 'RFD',
+    ['ggm']         = 'GMM',
+    ['ulda']        = 'ULDA',
+    ['zf']          = 'ZF',
+    ['maraorange']  = 'MARA',
+    ['marapurple']  = 'MARA',
+    ['maraprincess'] = 'MARA',
+    ['st']          = 'ST',
+    ['brd']         = 'BRD',
+    ['brdarena']    = 'BRD',
+    ['brdemp']      = 'BRD',
+    ['lbrs']        = 'LBRS',
+    ['bh']          = 'BH',
+    ['scholo']      = 'SCHOLO',
+    ['stratud']     = 'STRATUNDEAD',
+    ['stratlive']   = 'STRATLIVE',
+    ['ubrs']        = 'UBRS',
+  }
+  return lfgToCode[code]
 end
 
 function GBB.ParseMessage( msg, name, channel )
