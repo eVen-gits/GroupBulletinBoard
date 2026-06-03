@@ -540,7 +540,7 @@ local function hooked_createTooltip( self )
         if entry.Note then
           self:AddLine( entry.Note )
         end
-        self:AddLine( SecondsToTime( GetServerTime() - entry.lastSeen ) )
+        self:AddLine( SecondsToTime( time() - entry.lastSeen ) )
         self:Show()
       end
     end
@@ -951,7 +951,7 @@ local function Event_CHAT_MSG_SYSTEM( arg1 )
       if entry.dungeon then
         info = info .. " - " .. entry.dungeon
       end
-      info = info .. " - " .. SecondsToTime( GetServerTime() - entry.lastSeen )
+      info = info .. " - " .. SecondsToTime( time() - entry.lastSeen )
 
       if entry.Note then
         info = info .. " - " .. entry.Note

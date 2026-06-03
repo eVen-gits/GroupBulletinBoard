@@ -140,7 +140,7 @@ local function CreateHeader( yy, dungeon )
     lastIsFolded = false
   end
 
-  _G[ ItemFrameName .. "_name" ]:SetText( colTXT .. GBB.dungeonNames[ dungeon ] ..
+  _G[ ItemFrameName .. "_name" ]:SetText( colTXT .. (GBB.dungeonNames[ dungeon ] or dungeon) ..
     " |cFFAAAAAA" .. GBB.LevelRange( dungeon ) .. "|r" )
   _G[ ItemFrameName .. "_name" ]:SetFontObject( GBB.DB.FontSize )
   GBB.FramesEntries[ dungeon ]:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 0, -yy )
@@ -154,27 +154,27 @@ end
 
 local function CreateSubHeader( yy, subheaderText )
   local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
-  local SubHeaderFrameName = "GBB.SubHeader_" .. yy .. "_" .. time()
 
-  -- Create a simple subheader frame
-  local subHeaderFrame = CreateFrame( "Frame", SubHeaderFrameName, GroupBulletinBoardFrame_ScrollChildFrame )
-  subHeaderFrame:SetSize( GroupBulletinBoardFrame:GetWidth() - 40, 16 )
-  subHeaderFrame:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
+  if not GBB.SubHeaderPool then GBB.SubHeaderPool = {} end
+  GBB.SubHeaderPoolIdx = (GBB.SubHeaderPoolIdx or 0) + 1
 
-  -- Create text for subheader
-  local subHeaderText = subHeaderFrame:CreateFontString(nil, "OVERLAY")
-  subHeaderText:SetFontObject( "GameFontNormalSmall" )
-  subHeaderText:SetText( "  " .. subheaderText )
-  subHeaderText:SetPoint( "LEFT", subHeaderFrame, "LEFT", 0, 0 )
-  subHeaderText:SetTextColor( 0.8, 0.8, 0.8, 1 )
-
-  subHeaderFrame:Show()
-
-  -- Store reference for cleanup
-  if not GBB.SubHeaders then
-    GBB.SubHeaders = {}
+  local subHeaderFrame = GBB.SubHeaderPool[ GBB.SubHeaderPoolIdx ]
+  if not subHeaderFrame then
+    subHeaderFrame = CreateFrame( "Frame", nil, GroupBulletinBoardFrame_ScrollChildFrame )
+    local subHeaderText = subHeaderFrame:CreateFontString( nil, "OVERLAY" )
+    subHeaderText:SetFontObject( "GameFontNormalSmall" )
+    subHeaderText:SetPoint( "LEFT", subHeaderFrame, "LEFT", 0, 0 )
+    subHeaderText:SetTextColor( 0.8, 0.8, 0.8, 1 )
+    subHeaderFrame.text = subHeaderText
+    GBB.SubHeaderPool[ GBB.SubHeaderPoolIdx ] = subHeaderFrame
   end
-  table.insert( GBB.SubHeaders, subHeaderFrame )
+
+  subHeaderFrame:SetParent( GroupBulletinBoardFrame_ScrollChildFrame )
+  subHeaderFrame:SetSize( GroupBulletinBoardFrame:GetWidth() - 40, 16 )
+  subHeaderFrame:ClearAllPoints()
+  subHeaderFrame:SetPoint( "TOPLEFT", _G[ AnchorTop ], "TOPLEFT", 10, -yy )
+  subHeaderFrame.text:SetText( "  " .. subheaderText )
+  subHeaderFrame:Show()
 
   return yy + 16
 end
@@ -182,44 +182,16 @@ end
 local function CreateItem( yy, i, doCompact, req, forceHight )
   local AnchorTop = "GroupBulletinBoardFrame_ScrollChildFrame"
   local AnchorRight = "GroupBulletinBoardFrame_ScrollChildFrame"
-  local ItemFrameName = "GBB.Item_" .. i .. "_" .. GetTime()
+  local ItemFrameName = "GBB.Item_" .. i
 
-  -- ALWAYS destroy and recreate to prevent overlapping
-  if GBB.FramesEntries[ i ] then
-    GBB.FramesEntries[ i ]:Hide()
+  -- Reuse existing frame if available; WoW frames cannot be destroyed so never orphan them
+  if not GBB.FramesEntries[ i ] then
+    GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
+      "GroupBulletinBoard_TmpRequest" )
+  else
     GBB.FramesEntries[ i ]:ClearAllPoints()
-    GBB.FramesEntries[ i ]:SetParent(nil)
-    GBB.FramesEntries[ i ] = nil
+    GBB.FramesEntries[ i ]:SetParent( GroupBulletinBoardFrame_ScrollChildFrame )
   end
-
-  -- Clean up any existing global frame with this name
-  local existingFrame = _G[ItemFrameName]
-  if existingFrame then
-    existingFrame:Hide()
-    existingFrame:ClearAllPoints()
-    existingFrame:SetParent(nil)
-    _G[ItemFrameName] = nil
-    _G[ItemFrameName .. "_name"] = nil
-    _G[ItemFrameName .. "_message"] = nil
-    _G[ItemFrameName .. "_time"] = nil
-  end
-
-  -- Additional cleanup: remove any frames that might have the old naming pattern
-  local oldFrameName = "GBB.Item_" .. i
-  local oldFrame = _G[oldFrameName]
-  if oldFrame then
-    oldFrame:Hide()
-    oldFrame:ClearAllPoints()
-    oldFrame:SetParent(nil)
-    _G[oldFrameName] = nil
-    _G[oldFrameName .. "_name"] = nil
-    _G[oldFrameName .. "_message"] = nil
-    _G[oldFrameName .. "_time"] = nil
-  end
-
-  -- Create fresh frame
-  GBB.FramesEntries[ i ] = CreateFrame( "Frame", ItemFrameName, GroupBulletinBoardFrame_ScrollChildFrame,
-    "GroupBulletinBoard_TmpRequest" )
 
   -- Set up child frames
   if _G[ ItemFrameName .. "_name" ] then
@@ -642,65 +614,12 @@ end
 
 local ownRequestDungeons = {}
 function GBB.UpdateList()
-  -- COMPLETE RESET: Destroy all existing frames to prevent overlapping
-  -- First, hide and clear all frames in FramesEntries
+  -- Hide all pooled item frames; CreateItem will reuse them as needed
   if GBB.FramesEntries then
-    for i = 1, 100 do
+    for i = 1, #GBB.FramesEntries do
       if GBB.FramesEntries[i] then
-        local frame = GBB.FramesEntries[i]
-        if frame and frame.GetName then
-          local frameName = frame:GetName()
-          -- Hide the frame and all its children
-          frame:Hide()
-          frame:ClearAllPoints()
-          frame:SetParent(nil)
-          -- Clean up child frames by name
-          if frameName then
-            if _G[frameName .. "_name"] then _G[frameName .. "_name"]:Hide() _G[frameName .. "_name"] = nil end
-            if _G[frameName .. "_message"] then _G[frameName .. "_message"]:Hide() _G[frameName .. "_message"] = nil end
-            if _G[frameName .. "_time"] then _G[frameName .. "_time"]:Hide() _G[frameName .. "_time"] = nil end
-            _G[frameName] = nil
-          end
-        end
-        GBB.FramesEntries[i] = nil
-      end
-    end
-  end
-
-  -- Clean up ALL global frames (including those with timestamps)
-  -- First, try the old pattern
-  for i = 1, 1000 do
-    local frame = _G["GBB.Item_" .. i]
-    if frame then
-      frame:Hide()
-      frame:ClearAllPoints()
-      frame:SetParent(nil)
-      _G["GBB.Item_" .. i] = nil
-      _G["GBB.Item_" .. i .. "_name"] = nil
-      _G["GBB.Item_" .. i .. "_message"] = nil
-      _G["GBB.Item_" .. i .. "_time"] = nil
-    end
-  end
-
-  -- Also clean up frames with timestamp pattern by iterating through ScrollChildFrame children
-  -- Use GetChildren() which returns varargs in older WoW versions
-  if GroupBulletinBoardFrame_ScrollChildFrame then
-    local children = { GroupBulletinBoardFrame_ScrollChildFrame:GetChildren() }
-    -- Iterate backwards to avoid issues when removing frames
-    for i = #children, 1, -1 do
-      local child = children[i]
-      if child and child.GetName then
-        local name = child:GetName()
-        if name and string.match(name, "^GBB%.Item_%d+_") then
-          -- This is one of our entry frames with timestamp
-          child:Hide()
-          child:ClearAllPoints()
-          child:SetParent(nil)
-          _G[name] = nil
-          if _G[name .. "_name"] then _G[name .. "_name"]:Hide() _G[name .. "_name"] = nil end
-          if _G[name .. "_message"] then _G[name .. "_message"]:Hide() _G[name .. "_message"] = nil end
-          if _G[name .. "_time"] then _G[name .. "_time"]:Hide() _G[name .. "_time"] = nil end
-        end
+        GBB.FramesEntries[i]:Hide()
+        GBB.FramesEntries[i]:ClearAllPoints()
       end
     end
   end
@@ -769,35 +688,12 @@ function GBB.UpdateList()
 
   local itemHight = CreateItem( yy, 0, doCompact, nil )
 
-  -- Hide all frames first and reset their positions
-  for i = 1, 100 do
-    if GBB.FramesEntries[i] then
-      GBB.FramesEntries[i]:Hide()
-      GBB.FramesEntries[i]:ClearAllPoints()
-      -- Reset height to prevent accumulation
-      GBB.FramesEntries[i]:SetHeight(1)
-    end
-  end
-
-  -- Hide all subheaders and clear their points
-  if GBB.SubHeaders then
-    for _, subHeader in ipairs( GBB.SubHeaders ) do
-      if subHeader then
-        subHeader:Hide()
-        subHeader:ClearAllPoints()
-        subHeader:SetParent(nil)
-      end
-    end
-    GBB.SubHeaders = {}
-  end
-
-  -- Also clean up any orphaned subheaders by searching for them
-  for i = 1, 1000 do
-    local frame = _G["GBB.SubHeader_" .. i]
-    if frame then
-      frame:Hide()
-      frame:ClearAllPoints()
-      frame:SetParent(nil)
+  -- Hide all pooled subheaders; CreateSubHeader will reuse them from index 1 up
+  GBB.SubHeaderPoolIdx = 0
+  if GBB.SubHeaderPool then
+    for _, subHeader in ipairs( GBB.SubHeaderPool ) do
+      subHeader:Hide()
+      subHeader:ClearAllPoints()
     end
   end
 
@@ -1563,10 +1459,11 @@ function GBB.ParseMessage( msg, name, channel )
           GBB.RequestList[ index ].IsPastPlayer = GBB.GroupTrans[ name ] ~= nil
 
           if GBB.FilterDungeon( dungeon, isHeroic, isRaid ) and dungeon ~= "TRADE" then
+            local dungeonLabel = GBB.dungeonNames[ dungeon ] or dungeon
             if dungeonTXT == "" then
-              dungeonTXT = GBB.dungeonNames[ dungeon ]
+              dungeonTXT = dungeonLabel
             else
-              dungeonTXT = GBB.dungeonNames[ dungeon ] .. ", " .. dungeonTXT
+              dungeonTXT = dungeonLabel .. ", " .. dungeonTXT
             end
             if GBB.DB.OnDebug then
               print("GBB: " .. tostring(name) .. " -> added " .. dungeon)
