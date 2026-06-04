@@ -1689,7 +1689,7 @@ function GBB.RequestShowTooltip( self )
       if entry.Note then
         GameTooltip:AddLine( entry.Note )
       end
-      GameTooltip:AddLine( SecondsToTime( GetServerTime() - entry.lastSeen ) )
+      GameTooltip:AddLine( SecondsToTime( time() - entry.lastSeen ) )
     end
 
     -- Integration with LogTracker addon (if addon is present and loaded)

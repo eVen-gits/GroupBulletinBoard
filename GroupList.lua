@@ -106,7 +106,7 @@ function GBB.UpdateGroupList()
   for i, member in pairs( group ) do
     if GBB.GroupTrans[ member.name ] then
       local entry = GBB.GroupTrans[ member.name ]
-      entry.lastSeen = GetServerTime()
+      entry.lastSeen = time()
       if not entry.guid then
         entry.guid = group[ entry.name ].guid
       end
@@ -115,7 +115,7 @@ function GBB.UpdateGroupList()
       GBB.GroupTrans[ member.name ] = {
         name = member.name,
         class = member.class,
-        lastSeen = GetServerTime(),
+        lastSeen = time(),
         guid = member.guid,
         dungeon = dname,
       }
@@ -164,7 +164,7 @@ local function EnterHyperlink( self, link, text )
         if entry.Note then
           GameTooltip:AddLine( entry.Note )
         end
-        GameTooltip:AddLine( SecondsToTime( GetServerTime() - entry.lastSeen ) )
+        GameTooltip:AddLine( SecondsToTime( time() - entry.lastSeen ) )
         GameTooltip:Show()
         break
       end
@@ -247,7 +247,7 @@ function GBB.InitGroupList()
 		GBB.DBChar.GroupList[i]={
 			name="rnd"..i,
 			class=GBB.Tool.Classes[ random(1,#GBB.Tool.Classes)],
-			lastSeen=GetServerTime()-random(1,400000),
+			lastSeen=time()-random(1,400000),
 		}
 	end
 	--]]
